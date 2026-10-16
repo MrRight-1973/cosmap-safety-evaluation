@@ -65,6 +65,7 @@
 <script src="articoli.js"></script>
 <script src="archivio.js"></script>
 <script src="sistema.js"></script>
+<script src="vdma.js"></script>
 <script>
 'use strict';
 const E = window.SafetyEngine;
@@ -392,14 +393,16 @@ const ART_COLS = [
 function pickFile(accept, cb) {
   h('input', { type: 'file', accept, onchange: async e => { const f = e.target.files[0]; if (f) await cb(f); } }).click();
 }
-function importSistema() {
-  pickFile('.slb', async f => {
+// Librerie dei costruttori: SISTEMA (.slb, database Firebird) o VDMA 66413 (.xml)
+function importLibreria() {
+  pickFile('.slb,.xml', async f => {
     try {
-      const r = window.Sistema.importa(new Uint8Array(await f.arrayBuffer()));
+      const xml = /\.xml$/i.test(f.name);
+      const r = xml ? window.Vdma.importa(await f.text()) : window.Sistema.importa(new Uint8Array(await f.arrayBuffer()));
       const u = window.Archivio.unisci(A, r.articoli);
       UI.importa = { file: f.name, ...r, nuovi: u.nuovi, aggiornati: u.aggiornati, invariati: u.invariati, articoli_unione: u.articoli };
     } catch (e) {
-      UI.importa = { file: f.name, errore: e instanceof window.Sistema.FormatError ? e.message : 'Lettura non riuscita: ' + e.message };
+      UI.importa = { file: f.name, errore: e instanceof window.Sistema.FormatError || e instanceof window.Vdma.FormatError ? e.message : 'Lettura non riuscita: ' + e.message };
     }
     render();
   });
@@ -414,6 +417,7 @@ function importPanel() {
     h('h2', {}, `Libreria ${m.libreria}`),
     h('p', {}, `${m.articoli.length} articoli letti: ${con('pfh')} con PFH, ${con('b10d')} con B10d, ${con('mttfd')} con MTTFd. `,
       h('b', {}, `${m.nuovi} nuovi, ${m.aggiornati} aggiornati, ${m.invariati} già presenti.`)),
+    m.articoli.some(a => /= (B10|MTTF) \/ RDF/.test(a.fonte)) ? h('p', { class: 'note' }, `${m.articoli.filter(a => /= (B10|MTTF) \/ RDF/.test(a.fonte)).length} articoli danno B10 o MTTF con la quota di guasti pericolosi (RDF): B10d e MTTFd sono ricavati come B10 / RDF e MTTF / RDF, con il calcolo scritto nella fonte.`) : null,
     m.scartati.length ? h('details', {}, h('summary', {}, `${m.scartati.length} voci scartate`), h('ul', { class: 'list' }, m.scartati.map(([w, n]) => h('li', {}, `${n}: ${w}`)))) : null,
     h('p', { class: 'note' }, 'Gli articoli entrano come "da verificare": confronta i valori con la documentazione del costruttore prima di usarli in un documento. Se un valore cambia rispetto all\'archivio, l\'articolo torna da verificare.'),
     h('div', { class: 'row' },
@@ -429,7 +433,7 @@ function editPanel() {
     h('div', { class: 'grid', style: 'margin-top:10px' }, ART_COLS.map(([k, t, o]) =>
       field(t, () => a[k], v => a[k] = v, Array.isArray(o) ? { options: o } : { type: o || 'text', step: 'any', min: 0 }))),
     check('Verificato sul documento originale', () => a.verificato, v => a.verificato = v),
-    a.libreria ? h('p', { class: 'note' }, `Importato dalla libreria SISTEMA ${a.libreria}.`) : null);
+    a.libreria ? h('p', { class: 'note' }, `Importato dalla libreria ${a.libreria}.`) : null);
 }
 function stepDb() {
   const prod = window.Archivio.perProduttore(A);
@@ -442,7 +446,7 @@ function stepDb() {
     h('p', { class: 'sub' }, 'Ogni valore deve venire da un certificato, da un documento o da una libreria del costruttore. Spunta "verificato" solo dopo averlo confrontato con l\'originale. I campi vuoti non vengono mai riempiti con valori tipici.'),
     h('p', { style: 'margin:-8px 0 12px;font-size:13px' }, where, DB.error ? h('span', { class: 'bad' }, ' · ' + DB.error) : null),
     h('div', { class: 'row noprint', style: 'margin:0 0 12px' },
-      h('button', { class: 'p', onclick: importSistema }, 'Importa libreria SISTEMA (.slb)'),
+      h('button', { class: 'p', onclick: importLibreria }, 'Importa libreria costruttore (SISTEMA .slb, VDMA .xml)'),
       h('button', { onclick: () => importFile(d => { if (!Array.isArray(d)) throw new Error('serve un elenco di articoli'); d.forEach(a => { a.id ||= uid(); }); A = window.Archivio.unisci(A, d).articoli; }) }, 'Importa JSON'),
       h('button', { onclick: () => download('archivio-articoli.json', JSON.stringify(list, null, 2)) }, `Esporta ${list.length === A.length ? 'tutto' : 'i ' + list.length + ' filtrati'}`),
       h('button', { onclick: () => { const a = { id: uid(), codice: 'Nuovo articolo', descrizione: '', produttore: UI.produttore || '', tipo: UI.tipo || 'sensore', pfh: null, b10d: null, mttfd: null, plMax: null, fonte: '', dataFonte: '', verificato: false, note: '' }; A.push(a); UI.edit = a.id; render(); } }, 'Aggiungi articolo')),
