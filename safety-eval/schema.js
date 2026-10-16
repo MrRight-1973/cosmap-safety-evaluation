@@ -59,5 +59,38 @@
     f.percorsi = percorsi(f).filter(n => n && n !== nome);
   }
 
-  return { ORDINE, percorsi, catena, aggiungiPercorso, rinominaPercorso, eliminaPercorso };
+  // Schema con confluenza: se in ogni percorso i blocchi comuni stanno tutti in coda, ciascun percorso
+  // si disegna con i soli blocchi propri e confluisce nei comuni, disegnati una volta sola.
+  // Restituisce { propri: Map(nome → blocchi), comuni } oppure null se il disegno a confluenza non si applica.
+  function confluenza(f) {
+    const nomi = percorsi(f).filter(Boolean);
+    if (nomi.length < 2) return null;
+    const comuni = catena(f, nomi[0]).filter(ss => !nomeDi(ss));
+    if (!comuni.length) return null;
+    const propri = new Map();
+    for (const nome of nomi) {
+      const c = catena(f, nome);
+      const i = c.findIndex(ss => !nomeDi(ss));
+      if (c.slice(i).some(ss => nomeDi(ss))) return null; // un blocco proprio dopo un comune: serve la catena intera
+      propri.set(nome, c.slice(0, i));
+    }
+    return { propri, comuni };
+  }
+
+  // Sottosistemi raggruppati come nello schema: un gruppo per percorso (blocchi propri in ordine di catena),
+  // poi i blocchi comuni. Con un solo percorso, un gruppo unico in ordine di catena.
+  function gruppi(f) {
+    const nomi = percorsi(f).filter(Boolean);
+    if (!nomi.length) return [{ titolo: '', comune: false, blocchi: catena(f, '') }];
+    const out = nomi.map(nome => ({ titolo: nome, comune: false, blocchi: catena(f, nome).filter(ss => nomeDi(ss) === nome) }));
+    const comuni = catena(f, nomi[0]).filter(ss => !nomeDi(ss));
+    if (comuni.length) out.push({ titolo: 'Comuni a tutti i percorsi', comune: true, blocchi: comuni });
+    // blocchi con un percorso non più in elenco (non dovrebbe accadere): in fondo, per non perderli
+    const visti = new Set(out.flatMap(g => g.blocchi));
+    const altri = f.sottosistemi.filter(ss => !visti.has(ss));
+    if (altri.length) out.push({ titolo: 'Altri', comune: false, blocchi: altri });
+    return out;
+  }
+
+  return { ORDINE, percorsi, catena, confluenza, gruppi, aggiungiPercorso, rinominaPercorso, eliminaPercorso };
 });
