@@ -1,2 +1,5 @@
 safety-eval/safety-eval.html
 node_modules/
+*.slb
+librerie/
+__pycache__/
