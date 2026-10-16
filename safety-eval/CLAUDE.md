@@ -15,9 +15,9 @@ Web app statica (HTML + JS, nessuna dipendenza; con `npm start` il server locale
 - `test/`: `engine.test.js`, `archivio.test.js`, `sistema.test.js`, `vdma.test.js`, `zip.test.js`, `schema.test.js` (dati sintetici; `crea-zip.js` scrive gli .zip di prova). engine.test.js include i 4 casi di riferimento S120 (552, 840, 46, 92).
 
 ## Passi
-1. Progetto e funzioni: PLr dal grafo del rischio (all. A).
-2. Architettura: schema a blocchi interattivo. Ogni riga è un percorso (iniziatore alternativo, OR) con i blocchi in serie; i blocchi comuni (tratteggiati) stanno in tutti i percorsi; la funzione prende il percorso peggiore. Clic su un blocco → ruolo, percorso, metodo, categoria. Lo schema compare anche nel report.
-3. Componenti: articoli dall'archivio filtrati per tipologia secondo il ruolo del sottosistema (ricerca e "tutte le tipologie" per allargare), quantità; per l'architettura designata canale, DC e dati d'uso per B10d.
+1. Progetto e funzioni: PLr dal grafo del rischio (all. A), disegnato in SVG con il percorso scelto evidenziato (anche nel report).
+2. Architettura: schema a blocchi interattivo. Ogni riga è un percorso (iniziatore alternativo, OR) con i blocchi in serie; i blocchi comuni (tratteggiati) stanno in tutti i percorsi e, se sono tutti in coda, si disegnano una volta sola con i percorsi che vi confluiscono (`Schema.confluenza`), altrimenti si ripetono in ogni riga; la funzione prende il percorso peggiore. Clic su un blocco → ruolo, percorso, metodo, categoria. Lo schema compare anche nel report.
+3. Componenti: sottosistemi raggruppati per percorso e poi i comuni, nell'ordine dello schema (`Schema.gruppi`, stesso ordine nel passo 4); articoli dall'archivio filtrati per tipologia secondo il ruolo del sottosistema (ricerca e "tutte le tipologie" per allargare), quantità; per l'architettura designata canale, DC e dati d'uso per B10d.
 4. Calcolo: MTTFd per canale (all. C, D.2, cap 100 anni, 2500 in cat. 4), DCavg (all. E), CCF (tab. F.1, ≥ 65), PFH dalla tab. K.1 (`pfhK1` in engine.js: riga MTTFd immediatamente inferiore; DC alta in cat. 2/3 → colonna DC media; oltre 100 anni → riga 100), sovrascrivibile a mano con avviso se diverso.
 5. Verifica: PL = min(PL da somma PFH, PL dei sottosistemi) ≥ PLr; serve almeno un sottosistema per rilevamento, logica e attuazione.
 6. Report stampabile (PDF dal browser) con elenco fonti.

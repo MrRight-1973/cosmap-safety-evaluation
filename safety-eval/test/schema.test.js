@@ -1,7 +1,7 @@
 // node --test safety-eval/test/schema.test.js
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { percorsi, catena, aggiungiPercorso, rinominaPercorso, eliminaPercorso } = require('../schema.js');
+const { percorsi, catena, confluenza, gruppi, aggiungiPercorso, rinominaPercorso, eliminaPercorso } = require('../schema.js');
 const E = require('../engine.js');
 
 const ss = (nome, ruolo, percorso = '') => ({ id: nome, nome, ruolo, percorso, metodo: 'pfh', componenti: [] });
@@ -51,4 +51,23 @@ test('lo schema e il motore di calcolo vedono gli stessi percorsi', () => {
 test('stesso ruolo: prima il blocco del percorso, poi quello comune', () => {
   const f = { sottosistemi: [ss('CPU', 'logica'), ss('F-DI', 'logica', 'A'), ss('Fungo', 'rilevamento', 'A')] };
   assert.deepEqual(catena(f, 'A').map(x => x.nome), ['Fungo', 'F-DI', 'CPU']);
+});
+
+test('confluenza: percorsi con blocchi propri che confluiscono nei comuni', () => {
+  const f = { sottosistemi: [ss('Drive', 'attuazione'), ss('Fungo', 'rilevamento', 'Funghi'), ss('CPU', 'logica'),
+    ss('F-DI', 'logica', 'Funghi'), ss('KTP', 'rilevamento', 'KTP')], percorsi: ['Funghi', 'KTP'] };
+  const c = confluenza(f);
+  assert.deepEqual(c.propri.get('Funghi').map(x => x.nome), ['Fungo', 'F-DI']);
+  assert.deepEqual(c.propri.get('KTP').map(x => x.nome), ['KTP']);
+  assert.deepEqual(c.comuni.map(x => x.nome), ['CPU', 'Drive']);
+  assert.deepEqual(gruppi(f).map(g => [g.titolo, g.blocchi.map(x => x.nome)]),
+    [['Funghi', ['Fungo', 'F-DI']], ['KTP', ['KTP']], ['Comuni a tutti i percorsi', ['CPU', 'Drive']]]);
+});
+
+test('confluenza non applicabile: percorso unico, nessun comune, proprio dopo un comune', () => {
+  assert.equal(confluenza({ sottosistemi: [ss('Fungo', 'rilevamento'), ss('CPU', 'logica')] }), null);
+  assert.equal(confluenza({ sottosistemi: [ss('A', 'rilevamento', 'A'), ss('B', 'rilevamento', 'B')] }), null);
+  // comune di rilevamento prima di una logica propria
+  assert.equal(confluenza({ sottosistemi: [ss('Fungo', 'rilevamento'), ss('CPU A', 'logica', 'A'), ss('KTP', 'rilevamento', 'B')] }), null);
+  assert.deepEqual(gruppi({ sottosistemi: [ss('CPU', 'logica'), ss('Fungo', 'rilevamento')] }).map(g => g.blocchi.map(x => x.nome)), [['Fungo', 'CPU']]);
 });
