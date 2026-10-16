@@ -158,7 +158,12 @@
     }
     const nano = ss.pfhK1 ?? null;
     if (nano == null) warns.push('Inserisci il PFH letto in ISO 13849-1, tab. K.1, per categoria, DCavg e MTTFd del sottosistema.');
-    const pl = nano == null ? null : plMin(toPL(nano * 1e-9).pl, cat ? cat.maxPL : null);
+    if (cat && cat.canali === 1 && items.some(i => i.canale === 2))
+      warns.push(`Categoria ${ss.categoria} a un solo canale: i componenti sul canale 2 non entrano nel calcolo. Per due canali scegli la categoria 3 o 4.`);
+    const plPfh = nano == null ? null : toPL(nano * 1e-9).pl;
+    if (plPfh && cat && PL_RANK[plPfh] > PL_RANK[cat.maxPL])
+      warns.push(`PL limitato a ${cat.maxPL} dalla categoria ${ss.categoria} (dal PFH sarebbe ${plPfh}).`);
+    const pl = plPfh == null ? null : plMin(plPfh, cat ? cat.maxPL : null);
     return { metodo: 'arch', nano, pl, ch1, ch2, mttfd, mttfdLevel: mLev, dcavg, dcLevel: dLev, ccf, items, errors, warns };
   }
 

@@ -100,3 +100,16 @@ test('funzione senza rilevamento e logica non è soddisfatta', () => {
   assert.equal(r.pl, 'e');
   assert.equal(r.ok, false);
 });
+
+test('categoria B con due canali: PL limitato e avvisi', () => {
+  const ss = { nome: 'Rilevamento', metodo: 'arch', categoria: 'B', pfhK1: 42.9, componenti: [
+    { articoloId: 'fungo', canale: 1, dc: 99, dop: 220, hop: 16, tcycle: 45 },
+    { articoloId: 'fungo', canale: 2, dc: 99, dop: 220, hop: 16, tcycle: 45 }] };
+  const r = E.evalSubsystem(ss, PROVA, 20);
+  assert.equal(r.pl, 'b');
+  assert.ok(r.warns.some(w => w.includes('PL limitato a b dalla categoria B (dal PFH sarebbe e)')));
+  assert.ok(r.warns.some(w => w.includes('un solo canale')));
+  const r3 = E.evalSubsystem({ ...ss, categoria: '3' }, PROVA, 20);
+  assert.equal(r3.pl, 'e');
+  assert.ok(!r3.warns.some(w => w.includes('limitato') || w.includes('un solo canale')));
+});
