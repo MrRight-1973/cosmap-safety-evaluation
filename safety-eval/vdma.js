@@ -90,6 +90,7 @@
       const gruppo = tr('Groups', kid(dev, 'Group'));
       const doc = tr('DocFiles', kid(dev, 'DocFile'));
       const archivio = txt(dev, 'Archive') === 'true';
+      const icona = pulisci(txt(dev, 'IconFileName'));
       kids(kid(dev, 'UseCases'), 'UseCase').forEach((uc, i) => {
         const cond = kid(uc, 'Constraints') ? kid(uc, 'Constraints').children.map(h => tr('Constraints', h)).filter(Boolean) : [];
         const fn = kid(uc, 'Function');
@@ -103,6 +104,7 @@
           note: NOTA + (archivio ? ' Articolo segnato nel database come non più a catalogo.' : ''),
           libreria, gruppo,
         };
+        if (icona) a.icona = icona; // nome del file immagine nel pacchetto del costruttore
         const g = k => num(txt(par, k));
         const rdf = g('RDF');
         let calcolo = '';
@@ -123,5 +125,34 @@
     return { libreria: `${produttore} · ${libreria}`, articoli, scartati };
   }
 
-  return { importa, parseXml, FormatError };
+  const IMG = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp', svg: 'image/svg+xml' };
+  const base = s => s.split(/[\\/]/).pop().toLowerCase();
+
+  // Pacchetto .zip del costruttore (database VDMA + immagini). files: [{ nome, leggi() }] da Zip.apri.
+  // Restituisce quanto importa() più immagini: Map chiave → { byte, tipo }; ogni articolo con
+  // un'immagine trovata riceve immagine = chiave (prefisso costruttore / nome file).
+  async function importaPacchetto(files) {
+    const xml = files.filter(f => /\.xml$/i.test(f.nome));
+    let r = null, errore = null;
+    // prima vdma.xml, poi gli altri .xml
+    for (const f of xml.sort((a, b) => (base(b.nome) === 'vdma.xml') - (base(a.nome) === 'vdma.xml'))) {
+      try { r = importa(new TextDecoder('utf-8').decode(await f.leggi())); r.file = f.nome; break; } catch (e) { errore = e; }
+    }
+    if (!r) throw errore instanceof FormatError || !errore ? new FormatError('Nello .zip non c\'è un database VDMA 66413 (.xml).') : errore;
+    const perNome = new Map(files.filter(f => IMG[f.nome.split('.').pop().toLowerCase()]).map(f => [base(f.nome), f]));
+    const immagini = new Map();
+    const pref = slug(r.articoli[0] ? r.articoli[0].produttore.split(' ')[0] : 'vdma');
+    let mancanti = 0;
+    for (const a of r.articoli) {
+      if (!a.icona) continue;
+      const f = perNome.get(base(a.icona));
+      if (!f) { mancanti++; continue; }
+      const chiave = `${pref}/${base(a.icona).replace(/[^a-z0-9._-]/g, '_')}`;
+      if (!immagini.has(chiave)) immagini.set(chiave, { byte: await f.leggi(), tipo: IMG[f.nome.split('.').pop().toLowerCase()] });
+      a.immagine = chiave;
+    }
+    return { ...r, immagini, immaginiMancanti: mancanti };
+  }
+
+  return { importa, importaPacchetto, parseXml, FormatError };
 });

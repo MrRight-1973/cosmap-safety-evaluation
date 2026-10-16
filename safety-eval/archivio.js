@@ -20,7 +20,11 @@
       const i = pos.get(n.id);
       if (i == null) { pos.set(n.id, out.length); out.push({ ...n }); esito.nuovi++; continue; }
       const v = out[i];
-      if (stessiValori(v, n) && v.fonte === n.fonte) { esito.invariati++; continue; }
+      if (stessiValori(v, n) && v.fonte === n.fonte) {
+        if (n.immagine && n.immagine !== v.immagine) out[i] = { ...v, immagine: n.immagine }; // stesso articolo, ora con immagine
+        esito.invariati++;
+        continue;
+      }
       out[i] = { ...v, ...n, verificato: stessiValori(v, n) ? v.verificato : false, note: v.note || n.note };
       esito.aggiornati++;
     }

@@ -8,9 +8,12 @@ const path = require('path');
 const ROOT = path.join(__dirname, 'safety-eval');
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const ARCHIVIO = path.join(DATA_DIR, 'archivio-articoli.json');
+const IMMAGINI = path.join(DATA_DIR, 'immagini');
+const MAX_IMG = 5 * 1024 * 1024;
 const PORT = Number(process.env.PORT) || 8080;
 const MAX_BODY = 50 * 1024 * 1024;
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.css': 'text/css', '.md': 'text/plain' };
+const IMG_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.bmp': 'image/bmp', '.svg': 'image/svg+xml' };
 
 function json(res, code, body) {
   res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -45,9 +48,35 @@ function archivio(req, res) {
   });
 }
 
+// Immagini degli articoli: data/immagini/<costruttore>/<file>, chiave = "<costruttore>/<file>"
+function immagine(req, res, chiave) {
+  if (!/^[a-z0-9_-]+\/[a-z0-9._-]+\.(png|jpe?g|gif|bmp|svg)$/.test(chiave)) return json(res, 400, { errore: 'nome immagine non valido' });
+  const file = path.join(IMMAGINI, ...chiave.split('/'));
+  if (req.method === 'GET') {
+    fs.readFile(file, (err, data) => {
+      if (err) { res.writeHead(404).end(); return; }
+      res.writeHead(200, { 'Content-Type': IMG_TYPES[path.extname(file)], 'Content-Security-Policy': 'sandbox', 'Cache-Control': 'no-cache' });
+      res.end(data);
+    });
+    return;
+  }
+  if (req.method !== 'PUT') return json(res, 405, { errore: 'metodo non ammesso' });
+  const chunks = [];
+  let size = 0;
+  req.on('data', c => { size += c.length; if (size > MAX_IMG) req.destroy(); else chunks.push(c); });
+  req.on('end', () => {
+    try {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, Buffer.concat(chunks));
+      json(res, 200, { salvata: chiave });
+    } catch (e) { json(res, 500, { errore: e.message }); }
+  });
+}
+
 http.createServer((req, res) => {
   let rel = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
   if (rel === '/api/articoli') return archivio(req, res);
+  if (rel.startsWith('/api/immagini/')) return immagine(req, res, rel.slice('/api/immagini/'.length));
   if (rel.endsWith('/')) rel += 'index.html';
   const file = path.join(ROOT, rel);
   if (!file.startsWith(ROOT + path.sep)) { res.writeHead(403).end(); return; }

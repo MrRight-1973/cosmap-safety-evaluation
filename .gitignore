@@ -5,3 +5,4 @@ librerie/
 __pycache__/
 data/
 vdma*.xml
+*.zip
