@@ -121,6 +121,8 @@ async function salvaImmagini(immagini) {
   if (DB.mode === 'server') {
     for (const [chiave, { byte, tipo }] of immagini) {
       const r = await fetch('api/immagini/' + chiave, { method: 'PUT', headers: { 'Content-Type': tipo }, body: byte });
+      // 404: il server in esecuzione è precedente all'archivio immagini (avviato prima di git pull)
+      if (r.status === 404) throw new Error('Immagini non salvate: il server è di una versione precedente. Chiudi la finestra di npm start, rilancialo e reimporta il pacchetto.');
       if (!r.ok) throw new Error(`immagine ${chiave} non salvata`);
     }
     return true;
@@ -477,8 +479,9 @@ function importPanel() {
         e.target.disabled = true;
         if (m.immagini && m.immagini.size) {
           let ok = false;
-          try { ok = await salvaImmagini(m.immagini); } catch (err) { DB.error = err.message; }
-          if (!ok) { DB.error ||= 'Immagini non salvate: lo spazio del browser non basta, avvia l\'app con npm start.'; m.articoli_unione.forEach(a => { if (a.immagine && !IMG[a.immagine]) delete a.immagine; }); }
+          UI.avvisoImmagini = null;
+          try { ok = await salvaImmagini(m.immagini); } catch (err) { UI.avvisoImmagini = err.message; }
+          if (!ok) { UI.avvisoImmagini ||= 'Immagini non salvate: lo spazio del browser non basta, avvia l\'app con npm start.'; m.articoli_unione.forEach(a => { if (a.immagine && !IMG[a.immagine]) delete a.immagine; }); }
         }
         A = m.articoli_unione; UI.importa = null; UI.produttore = m.articoli[0]?.produttore || ''; render();
       } }, 'Aggiungi all\'archivio'),
@@ -505,7 +508,8 @@ function stepDb() {
   return [
     h('h1', {}, 'Archivio articoli'),
     h('p', { class: 'sub' }, 'Ogni valore deve venire da un certificato, da un documento o da una libreria del costruttore. Spunta "verificato" solo dopo averlo confrontato con l\'originale. I campi vuoti non vengono mai riempiti con valori tipici.'),
-    h('p', { style: 'margin:-8px 0 12px;font-size:13px' }, where, DB.error ? h('span', { class: 'bad' }, ' · ' + DB.error) : null),
+    h('p', { style: 'margin:-8px 0 12px;font-size:13px' }, where, DB.error ? h('span', { class: 'bad' }, ' · ' + DB.error) : null,
+      UI.avvisoImmagini ? h('span', { class: 'bad' }, ' · ' + UI.avvisoImmagini) : null),
     h('div', { class: 'row noprint', style: 'margin:0 0 12px' },
       h('button', { class: 'p', onclick: importLibreria }, 'Importa libreria costruttore (SISTEMA .slb, VDMA .xml o .zip)'),
       h('button', { onclick: () => importFile(d => { if (!Array.isArray(d)) throw new Error('serve un elenco di articoli'); d.forEach(a => { a.id ||= uid(); }); A = window.Archivio.unisci(A, d).articoli; }) }, 'Importa JSON'),
