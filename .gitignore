@@ -3,3 +3,4 @@ node_modules/
 *.slb
 librerie/
 __pycache__/
+data/
