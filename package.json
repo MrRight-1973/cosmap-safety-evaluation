@@ -2,6 +2,7 @@
   "name": "cosmap-safety-evaluation",
   "private": true,
   "scripts": {
+    "start": "node serve.js",
     "test": "node --test calcolo-pl/test/regressione.test.js safety-eval/test/engine.test.js",
     "build": "node safety-eval/build.js"
   }

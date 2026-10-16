@@ -5,6 +5,16 @@ Strumenti per la safety evaluation delle funzioni di sicurezza secondo ISO 13849
 - `safety-eval/`: web app che guida passo passo la valutazione partendo da un archivio articoli. Si apre `safety-eval/index.html`, oppure `npm run build` crea `safety-eval/safety-eval.html` a file unico. Dettagli in `safety-eval/CLAUDE.md`.
 - `calcolo-pl/`: primo calcolatore del PFH per la funzione di emergenza con SINAMICS S120 in PROFIsafe. Dettagli in `calcolo-pl/CLAUDE.md`.
 
+## Avvio in localhost
+
+Serve Node.js 18 o successivo. Dalla cartella del repository:
+
+```
+npm start
+```
+
+poi apri http://localhost:8080 nel browser. Per usare un'altra porta: `PORT=3000 npm start` (su Windows PowerShell: `$env:PORT=3000; npm start`). I dati della valutazione restano salvati nel browser: usa "Esporta valutazione" per tenerne una copia.
+
 ## Test
 
 ```
