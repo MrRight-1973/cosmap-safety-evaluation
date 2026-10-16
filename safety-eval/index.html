@@ -448,7 +448,7 @@ function step4() {
   const r = f && evalFn(f);
   return [
     h('h1', {}, '4. Calcolo dei sottosistemi'),
-    h('p', { class: 'sub' }, 'PFH in 10⁻⁹/h. Per l\'architettura designata compila le misure contro i guasti di causa comune e inserisci il PFH della tabella K.1.'),
+    h('p', { class: 'sub' }, 'PFH in 10⁻⁹/h. Per l\'architettura designata compila le misure contro i guasti di causa comune e il PFH viene letto dalla tabella K.1 (lo puoi sovrascrivere a mano).'),
     fnTabs(),
     f ? r.subs.map(({ ss, r: x }) => h('section', {},
       h('div', { class: 'row', style: 'margin-top:0' }, h('h2', { style: 'margin:0' }, ss.nome), h('span', { class: 'spacer' }), plPill(x.pl)),
@@ -466,7 +466,11 @@ function step4() {
             E.CCF_MEASURES.map(m => check(`${m.testo} (${m.punti})`, () => !!(ss.ccf || {})[m.id], v => { ss.ccf = ss.ccf || {}; ss.ccf[m.id] = v; })),
           ] : null,
           h('div', { class: 'grid', style: 'margin-top:10px' },
-            field(`PFH da tab. K.1 per cat. ${ss.categoria || '?'}, DCavg ${x.dcLevel || '?'}, MTTFd ${fmt(x.mttfd, 0)} anni [10⁻⁹/h]`, () => ss.pfhK1, v => ss.pfhK1 = v, { type: 'number', min: 0, pfh: true, placeholder: 'es. 42,9 oppure 4,29E-08 (1/h)' })),
+            h('div', {},
+              h('div', { class: 'kv' }, h('span', {}, 'PFH da tab. K.1'),
+                h('span', {}, x.k1 ? `${fmt(x.k1.nano, 3)}·10⁻⁹/h (cat. ${ss.categoria}, riga MTTFd ${fmt(x.k1.riga, 1)} anni)` : 'non ricavabile')),
+              x.k1 ? h('p', { class: 'note', style: 'margin:4px 0 0' }, x.k1.fonte) : null),
+            field('PFH inserito a mano [10⁻⁹/h], vuoto = tab. K.1', () => ss.pfhK1, v => ss.pfhK1 = v, { type: 'number', min: 0, pfh: true, placeholder: x.k1 ? fmt(x.k1.nano, 3) + ' dalla tab. K.1' : 'es. 42,9 oppure 4,29E-08 (1/h)' })),
         ],
       issues(x.errors, x.warns))) : null,
   ];
@@ -529,8 +533,17 @@ function step6() {
         h('td', {}, `${a.codice} · ${a.descrizione || ''}`), h('td', {}, fmt(a.pfh)), h('td', {}, fmt(a.b10d, 0)), h('td', {}, fmt(a.mttfd, 1)),
         h('td', { style: 'font-size:12px' }, `${a.fonte || 'SENZA FONTE'}${a.dataFonte ? ' (' + a.dataFonte + ')' : ''}`),
         h('td', { class: a.verificato ? 'ok' : 'warn' }, a.verificato ? 'sì' : 'no'))))))),
+    k1Fonti(),
     h('p', { class: 'note' }, 'Risultati da confrontare con SISTEMA o Safety Evaluation Tool prima di usarli in documenti di conformità.'),
   ];
+}
+// Origine del PFH dei sottosistemi ad architettura designata: tab. K.1 o valore inserito a mano
+function k1Fonti() {
+  const righe = S.funzioni.flatMap(f => evalFn(f).subs.filter(x => x.r.metodo === 'arch').map(({ ss, r }) => h('tr', {},
+    h('td', {}, `${f.nome} · ${ss.nome}`), h('td', {}, fmt(r.nano, 3)),
+    h('td', { style: 'font-size:12px' }, r.pfhManuale ? 'Inserito a mano' + (r.k1 ? ` (tab. K.1: ${fmt(r.k1.nano, 3)})` : '') : r.k1 ? r.k1.fonte : '—'))));
+  return righe.length ? h('section', {}, h('h2', {}, 'PFH dei sottosistemi ad architettura designata'), h('div', { class: 'scroll' }, h('table', {},
+    h('thead', {}, h('tr', {}, h('th', {}, 'Sottosistema'), h('th', {}, 'PFH [10⁻⁹/h]'), h('th', {}, 'Origine'))), h('tbody', {}, righe)))) : null;
 }
 
 // ---- archivio ----

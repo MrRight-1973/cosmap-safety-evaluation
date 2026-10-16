@@ -18,16 +18,17 @@ Web app statica (HTML + JS, nessuna dipendenza; con `npm start` il server locale
 1. Progetto e funzioni: PLr dal grafo del rischio (all. A).
 2. Architettura: schema a blocchi interattivo. Ogni riga è un percorso (iniziatore alternativo, OR) con i blocchi in serie; i blocchi comuni (tratteggiati) stanno in tutti i percorsi; la funzione prende il percorso peggiore. Clic su un blocco → ruolo, percorso, metodo, categoria. Lo schema compare anche nel report.
 3. Componenti: articoli dall'archivio filtrati per tipologia secondo il ruolo del sottosistema (ricerca e "tutte le tipologie" per allargare), quantità; per l'architettura designata canale, DC e dati d'uso per B10d.
-4. Calcolo: MTTFd per canale (all. C, D.2, cap 100 anni, 2500 in cat. 4), DCavg (all. E), CCF (tab. F.1, ≥ 65), PFH da tab. K.1 inserito a mano.
+4. Calcolo: MTTFd per canale (all. C, D.2, cap 100 anni, 2500 in cat. 4), DCavg (all. E), CCF (tab. F.1, ≥ 65), PFH dalla tab. K.1 (`pfhK1` in engine.js: riga MTTFd immediatamente inferiore; DC alta in cat. 2/3 → colonna DC media; oltre 100 anni → riga 100), sovrascrivibile a mano con avviso se diverso.
 5. Verifica: PL = min(PL da somma PFH, PL dei sottosistemi) ≥ PLr; serve almeno un sottosistema per rilevamento, logica e attuazione.
 6. Report stampabile (PDF dal browser) con elenco fonti.
 
 ## Regole
-- Nessun valore di catalogo o di tabella non verificato: la tab. K.1 NON è codificata (va inserita da una copia della norma), i campi mancanti restano vuoti e generano avvisi.
+- Nessun valore di catalogo o di tabella non verificato; i campi mancanti restano vuoti e generano avvisi.
+- Tab. K.1 trascritta da "Calcolo Performance Level" (Wide Automation, 2021), che riporta la tabella della norma fino a 100 anni (manca l'estensione della cat. 4 fino a 2500 anni). Il test controlla ogni valore contro la colonna PL della tabella e la monotonia: se si corregge un valore, aggiornare anche `K1_PL` nel test.
 - PFH in 10⁻⁹/h, MTTFd/T10d in anni. I campi numerici sono di testo (`num()`): accettano la virgola decimale e la notazione E; un PFH sotto 0,001 è letto come 1/h e convertito (es. 4,29E-08 → 42,9). Niente `type=number`: il browser scartava la virgola (4,29 → 429).
 
 ## Da fare
-- Tabella K.1 codificata (da copia della norma) per ricavare il PFH in automatico.
+- Confrontare la tab. K.1 trascritta con una copia ufficiale della norma (fonte attuale secondaria).
 - Archivio reale dell'utente (Excel/CSV) da importare. PFH di F-CPU, F-DI, KTP900F: presenti nel vdma.xml Siemens, da confrontare con i certificati.
 - Controllo coerenza tra categoria e PFH; misure contro errori sistematici; export Excel.
 - Confronto risultati con SISTEMA / Safety Evaluation Tool.

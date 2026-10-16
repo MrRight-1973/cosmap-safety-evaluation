@@ -68,10 +68,10 @@ test('architettura designata: MTTFd capped a 100 anni, DCavg, CCF', () => {
   assert.equal(r.pl, 'e');
 });
 
-test('architettura designata senza PFH da tab. K.1: PL non determinato', () => {
-  const r = E.evalSubsystem(cat3({}), PROVA, 20);
+test('architettura designata senza categoria: niente PFH da tab. K.1, PL non determinato', () => {
+  const r = E.evalSubsystem(cat3({ categoria: null }), PROVA, 20);
   assert.equal(r.pl, null);
-  assert.ok(r.warns.some(w => w.includes('K.1')));
+  assert.ok(r.warns.some(w => w.includes('PFH non disponibile')));
 });
 
 test('categoria 3 con CCF insufficiente è un errore', () => {
@@ -112,4 +112,47 @@ test('categoria B con due canali: PL limitato e avvisi', () => {
   const r3 = E.evalSubsystem({ ...ss, categoria: '3' }, PROVA, 20);
   assert.equal(r3.pl, 'e');
   assert.ok(!r3.warns.some(w => w.includes('limitato') || w.includes('un solo canale')));
+});
+
+// Colonna PL della tab. K.1 (stessa fonte), riga per riga: controlla la trascrizione dei valori PFH.
+const K1_PL = {
+  B: 'a'.repeat(15) + 'b'.repeat(9),
+  1: 'bbb' + 'c'.repeat(11),
+  '2/basso': 'a'.repeat(10) + 'b'.repeat(11) + 'c'.repeat(11) + 'd'.repeat(6),
+  '2/medio': 'a'.repeat(7) + 'b'.repeat(11) + 'c'.repeat(8) + 'd'.repeat(12),
+  '3/basso': 'a'.repeat(3) + 'b'.repeat(11) + 'c'.repeat(8) + 'd'.repeat(16),
+  '3/medio': 'b'.repeat(7) + 'c'.repeat(9) + 'd'.repeat(16) + 'e'.repeat(6),
+  '4/alto': 'e'.repeat(14),
+};
+test('tab. K.1: ogni PFH dà il PL della tabella e decresce con MTTFd', () => {
+  E.K1_COLONNE.forEach((col, j) => {
+    const valori = E.K1_RIGHE.map(r => r[j]).filter(v => v != null).map(Number);
+    assert.equal(valori.map(v => E.toPL(v).pl).join(''), K1_PL[col], col);
+    for (let i = 1; i < valori.length; i++) assert.ok(valori[i] < valori[i - 1], `${col} riga ${i}`);
+  });
+  assert.equal(E.K1_RIGHE.length, E.K1_MTTFD.length);
+});
+
+test('tab. K.1: riga inferiore, colonne e casi limite', () => {
+  assert.equal(E.pfhK1('3', 'medio', 100).nano, 42.9);
+  assert.equal(E.pfhK1('3', 'medio', 99).riga, 91);          // riga immediatamente inferiore
+  assert.equal(E.pfhK1('3', 'alto', 100).nano, 42.9);         // DC alta in cat. 3 → colonna DC media
+  assert.equal(E.pfhK1('4', 'alto', 1420).nano, 24.7);        // oltre 100 anni → riga 100
+  assert.equal(E.pfhK1('2', 'basso', 10).nano, 7180);
+  assert.equal(E.pfhK1('B', 'nessuno', 12.5).nano, 9510);
+  assert.ok(E.pfhK1('1', 'nessuno', 20).errore);             // cat. 1 solo da 30 anni
+  assert.ok(E.pfhK1('4', 'medio', 100).errore);
+  assert.ok(E.pfhK1('3', 'nessuno', 100).errore);
+  assert.ok(E.pfhK1('3', 'medio', 2.5).errore);
+});
+
+test('architettura designata: PFH dalla tab. K.1 se non inserito a mano', () => {
+  const r = E.evalSubsystem(cat3({}), PROVA, 20); // MTTFd 100 anni, DCavg 99 % (alta → colonna DC media)
+  const ss = cat3({});
+  assert.equal(r.nano, 42.9);
+  assert.equal(r.pl, 'e');
+  assert.equal(r.k1.riga, 100);
+  const m = E.evalSubsystem({ ...ss, pfhK1: 60 }, PROVA, 20);
+  assert.equal(m.nano, 60);
+  assert.ok(m.warns.some(w => w.includes('diverso dalla tab. K.1')));
 });
