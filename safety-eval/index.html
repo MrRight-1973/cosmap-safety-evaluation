@@ -66,6 +66,7 @@
 <script src="archivio.js"></script>
 <script src="sistema.js"></script>
 <script src="vdma.js"></script>
+<script src="zip.js"></script>
 <script>
 'use strict';
 const E = window.SafetyEngine;
@@ -109,6 +110,28 @@ async function loadArchive() {
   if (!arch) { try { arch = JSON.parse(localStorage.getItem(ARCH_KEY) || 'null'); } catch (e) {} }
   if (!arch) arch = vecchio;
   A = window.Archivio.conDefault(arch || [], window.ARTICOLI_DEFAULT || []);
+}
+// Immagini degli articoli: con il server in data/immagini/, altrimenti nel browser (se c'è spazio)
+const IMG_KEY = 'safety-eval-immagini';
+let IMG = {};
+try { IMG = JSON.parse(localStorage.getItem(IMG_KEY) || '{}'); } catch (e) { IMG = {}; }
+const imgSrc = a => !a || !a.immagine ? null : DB.mode === 'server' ? 'api/immagini/' + a.immagine : IMG[a.immagine] || null;
+const thumb = (a, px = 40) => { const src = imgSrc(a); return src ? h('img', { src, alt: '', loading: 'lazy', style: `width:${px}px;height:${px}px;object-fit:contain;vertical-align:middle` }) : null; };
+async function salvaImmagini(immagini) {
+  if (DB.mode === 'server') {
+    for (const [chiave, { byte, tipo }] of immagini) {
+      const r = await fetch('api/immagini/' + chiave, { method: 'PUT', headers: { 'Content-Type': tipo }, body: byte });
+      if (!r.ok) throw new Error(`immagine ${chiave} non salvata`);
+    }
+    return true;
+  }
+  const nuove = { ...IMG };
+  for (const [chiave, { byte, tipo }] of immagini) {
+    let bin = '';
+    for (let i = 0; i < byte.length; i += 0x8000) bin += String.fromCharCode(...byte.subarray(i, i + 0x8000));
+    nuove[chiave] = `data:${tipo};base64,${btoa(bin)}`;
+  }
+  try { localStorage.setItem(IMG_KEY, JSON.stringify(nuove)); IMG = nuove; return true; } catch (e) { return false; }
 }
 function saveArchive() {
   const text = JSON.stringify(A);
@@ -246,9 +269,20 @@ function step2() {
 }
 
 // ---- passo 3 ----
-function articleSelect(c) {
+// tipologia di articolo adatta a ciascun ruolo di sottosistema
+const TIPO_RUOLO = { rilevamento: 'sensore', logica: 'logica', attuazione: 'attuatore', comunicazione: 'comunicazione' };
+const SEL = {}; // filtri del passo 3 per sottosistema: { testo, tutti }
+function candidati(ss) {
+  const s = SEL[ss.id] || {};
+  const tipo = TIPO_RUOLO[ss.ruolo];
+  return window.Archivio.filtra(A, { testo: s.testo, tipo: s.tutti ? '' : tipo });
+}
+function articleSelect(c, ss) {
   const groups = new Map();
-  for (const a of A.slice().sort((x, y) => `${x.produttore}${x.codice}`.localeCompare(`${y.produttore}${y.codice}`))) {
+  const lista = candidati(ss);
+  const scelto = art(c.articoloId);
+  if (scelto && !lista.includes(scelto)) lista.push(scelto); // l'articolo già scelto resta sempre visibile
+  for (const a of lista.sort((x, y) => `${x.produttore}${x.codice}`.localeCompare(`${y.produttore}${y.codice}`))) {
     const k = a.produttore || '(senza produttore)';
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k).push(a);
@@ -257,6 +291,17 @@ function articleSelect(c) {
     h('option', { value: '' }, '— scegli —'),
     [...groups].map(([g, list]) => h('optgroup', { label: g }, list.map(a =>
       h('option', { value: a.id, selected: a.id === c.articoloId }, `${a.codice} · ${a.descrizione || ''}${a.verificato ? '' : ' (da verificare)'}`)))));
+}
+function filtroArticoli(ss) {
+  const s = SEL[ss.id] ||= { testo: '', tutti: false };
+  const tipo = TIPO_RUOLO[ss.ruolo];
+  const n = candidati(ss).length;
+  return h('div', { class: 'row noprint', style: 'margin:0 0 8px;align-items:center;gap:12px' },
+    h('input', { type: 'search', 'data-ss': ss.id, value: s.testo, placeholder: 'cerca codice, descrizione, costruttore', style: 'max-width:320px',
+      oninput: e => { s.testo = e.target.value; clearTimeout(s.t); s.t = setTimeout(() => { render(); const i = document.querySelector(`input[data-ss="${ss.id}"]`); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 250); } }),
+    h('label', { style: 'display:flex;gap:6px;align-items:center;font-size:13px' },
+      h('input', { type: 'checkbox', checked: s.tutti, style: 'width:auto', onchange: e => { s.tutti = e.target.checked; render(); } }), 'tutte le tipologie'),
+    h('span', { class: 'mute', style: 'font-size:13px' }, `${n} articoli${s.tutti || !tipo ? '' : ` di tipo "${tipo}" (ruolo ${ss.ruolo})`}`));
 }
 function step3() {
   const f = fn();
@@ -268,6 +313,7 @@ function step3() {
       const arch = ss.metodo === 'arch';
       return h('section', {},
         h('h2', {}, ss.nome, h('span', { class: 'mute', style: 'font-weight:400' }, ` · ${arch ? 'architettura designata, cat. ' + (ss.categoria || '?') : 'PFH da certificato'}${ss.percorso ? ' · percorso ' + ss.percorso : ''}`)),
+        filtroArticoli(ss),
         h('div', { class: 'scroll' }, h('table', {},
           h('thead', {}, h('tr', {}, h('th', {}, 'Articolo'), h('th', {}, 'Qtà'),
             arch ? [h('th', {}, 'Canale'), h('th', {}, 'DC %'), h('th', {}, 'Giorni/anno'), h('th', {}, 'Ore/giorno'), h('th', {}, 'Ciclo [s]')] : h('th', {}, 'PFH cad.'),
@@ -276,7 +322,7 @@ function step3() {
             const a = art(c.articoloId);
             const b10 = a && a.mttfd == null && a.b10d != null;
             return h('tr', {},
-              h('td', {}, articleSelect(c)),
+              h('td', {}, h('div', { style: 'display:flex;gap:6px;align-items:center;min-width:280px' }, thumb(a), articleSelect(c, ss))),
               h('td', {}, field(null, () => c.qty, v => c.qty = v ?? 1, { type: 'number', min: 1 })),
               arch ? [
                 h('td', {}, field(null, () => String(c.canale || 1), v => c.canale = Number(v), { options: [['1', '1'], ['2', '2']] })),
@@ -393,16 +439,20 @@ const ART_COLS = [
 function pickFile(accept, cb) {
   h('input', { type: 'file', accept, onchange: async e => { const f = e.target.files[0]; if (f) await cb(f); } }).click();
 }
-// Librerie dei costruttori: SISTEMA (.slb, database Firebird) o VDMA 66413 (.xml)
+// Librerie dei costruttori: SISTEMA (.slb, database Firebird), VDMA 66413 (.xml) o pacchetto .zip (VDMA + immagini)
+async function leggiLibreria(f) {
+  if (/\.xml$/i.test(f.name)) return window.Vdma.importa(await f.text());
+  if (/\.zip$/i.test(f.name)) return window.Vdma.importaPacchetto(window.Zip.apri(new Uint8Array(await f.arrayBuffer())));
+  return window.Sistema.importa(new Uint8Array(await f.arrayBuffer()));
+}
 function importLibreria() {
-  pickFile('.slb,.xml', async f => {
+  pickFile('.slb,.xml,.zip', async f => {
     try {
-      const xml = /\.xml$/i.test(f.name);
-      const r = xml ? window.Vdma.importa(await f.text()) : window.Sistema.importa(new Uint8Array(await f.arrayBuffer()));
+      const r = await leggiLibreria(f);
       const u = window.Archivio.unisci(A, r.articoli);
       UI.importa = { file: f.name, ...r, nuovi: u.nuovi, aggiornati: u.aggiornati, invariati: u.invariati, articoli_unione: u.articoli };
     } catch (e) {
-      UI.importa = { file: f.name, errore: e instanceof window.Sistema.FormatError || e instanceof window.Vdma.FormatError ? e.message : 'Lettura non riuscita: ' + e.message };
+      UI.importa = { file: f.name, errore: [window.Sistema, window.Vdma, window.Zip].some(m => e instanceof m.FormatError) ? e.message : 'Lettura non riuscita: ' + e.message };
     }
     render();
   });
@@ -418,10 +468,20 @@ function importPanel() {
     h('p', {}, `${m.articoli.length} articoli letti: ${con('pfh')} con PFH, ${con('b10d')} con B10d, ${con('mttfd')} con MTTFd. `,
       h('b', {}, `${m.nuovi} nuovi, ${m.aggiornati} aggiornati, ${m.invariati} già presenti.`)),
     m.articoli.some(a => /= (B10|MTTF) \/ RDF/.test(a.fonte)) ? h('p', { class: 'note' }, `${m.articoli.filter(a => /= (B10|MTTF) \/ RDF/.test(a.fonte)).length} articoli danno B10 o MTTF con la quota di guasti pericolosi (RDF): B10d e MTTFd sono ricavati come B10 / RDF e MTTF / RDF, con il calcolo scritto nella fonte.`) : null,
+    m.immagini ? h('p', {}, `${m.immagini.size} immagini trovate nel pacchetto per ${m.articoli.filter(a => a.immagine).length} articoli` +
+      (m.immaginiMancanti ? `; ${m.immaginiMancanti} articoli citano un'immagine che nello .zip non c'è.` : '.')) : null,
     m.scartati.length ? h('details', {}, h('summary', {}, `${m.scartati.length} voci scartate`), h('ul', { class: 'list' }, m.scartati.map(([w, n]) => h('li', {}, `${n}: ${w}`)))) : null,
     h('p', { class: 'note' }, 'Gli articoli entrano come "da verificare": confronta i valori con la documentazione del costruttore prima di usarli in un documento. Se un valore cambia rispetto all\'archivio, l\'articolo torna da verificare.'),
     h('div', { class: 'row' },
-      h('button', { class: 'p', onclick: () => { A = m.articoli_unione; UI.importa = null; UI.produttore = m.articoli[0]?.produttore || ''; render(); } }, 'Aggiungi all\'archivio'),
+      h('button', { class: 'p', onclick: async e => {
+        e.target.disabled = true;
+        if (m.immagini && m.immagini.size) {
+          let ok = false;
+          try { ok = await salvaImmagini(m.immagini); } catch (err) { DB.error = err.message; }
+          if (!ok) { DB.error ||= 'Immagini non salvate: lo spazio del browser non basta, avvia l\'app con npm start.'; m.articoli_unione.forEach(a => { if (a.immagine && !IMG[a.immagine]) delete a.immagine; }); }
+        }
+        A = m.articoli_unione; UI.importa = null; UI.produttore = m.articoli[0]?.produttore || ''; render();
+      } }, 'Aggiungi all\'archivio'),
       h('button', { onclick: () => { UI.importa = null; render(); } }, 'Annulla')));
 }
 function editPanel() {
@@ -433,7 +493,8 @@ function editPanel() {
     h('div', { class: 'grid', style: 'margin-top:10px' }, ART_COLS.map(([k, t, o]) =>
       field(t, () => a[k], v => a[k] = v, Array.isArray(o) ? { options: o } : { type: o || 'text', step: 'any', min: 0 }))),
     check('Verificato sul documento originale', () => a.verificato, v => a.verificato = v),
-    a.libreria ? h('p', { class: 'note' }, `Importato dalla libreria ${a.libreria}.`) : null);
+    a.libreria ? h('p', { class: 'note' }, `Importato dalla libreria ${a.libreria}.`) : null,
+    imgSrc(a) ? h('p', {}, thumb(a, 160)) : null);
 }
 function stepDb() {
   const prod = window.Archivio.perProduttore(A);
@@ -446,7 +507,7 @@ function stepDb() {
     h('p', { class: 'sub' }, 'Ogni valore deve venire da un certificato, da un documento o da una libreria del costruttore. Spunta "verificato" solo dopo averlo confrontato con l\'originale. I campi vuoti non vengono mai riempiti con valori tipici.'),
     h('p', { style: 'margin:-8px 0 12px;font-size:13px' }, where, DB.error ? h('span', { class: 'bad' }, ' · ' + DB.error) : null),
     h('div', { class: 'row noprint', style: 'margin:0 0 12px' },
-      h('button', { class: 'p', onclick: importLibreria }, 'Importa libreria costruttore (SISTEMA .slb, VDMA .xml)'),
+      h('button', { class: 'p', onclick: importLibreria }, 'Importa libreria costruttore (SISTEMA .slb, VDMA .xml o .zip)'),
       h('button', { onclick: () => importFile(d => { if (!Array.isArray(d)) throw new Error('serve un elenco di articoli'); d.forEach(a => { a.id ||= uid(); }); A = window.Archivio.unisci(A, d).articoli; }) }, 'Importa JSON'),
       h('button', { onclick: () => download('archivio-articoli.json', JSON.stringify(list, null, 2)) }, `Esporta ${list.length === A.length ? 'tutto' : 'i ' + list.length + ' filtrati'}`),
       h('button', { onclick: () => { const a = { id: uid(), codice: 'Nuovo articolo', descrizione: '', produttore: UI.produttore || '', tipo: UI.tipo || 'sensore', pfh: null, b10d: null, mttfd: null, plMax: null, fonte: '', dataFonte: '', verificato: false, note: '' }; A.push(a); UI.edit = a.id; render(); } }, 'Aggiungi articolo')),
@@ -469,9 +530,9 @@ function stepDb() {
       check('Solo da verificare', () => UI.daVerificare, v => { UI.daVerificare = v; UI.limite = 100; }),
       h('p', { class: 'note' }, `${list.length} articoli su ${A.length}.`),
       h('div', { class: 'scroll' }, h('table', {},
-        h('thead', {}, h('tr', {}, ['Codice', 'Descrizione', 'Costruttore', 'Tipo', 'PFH', 'B10d', 'MTTFd', 'Verificato', ''].map(t => h('th', {}, t)))),
+        h('thead', {}, h('tr', {}, ['', 'Codice', 'Descrizione', 'Costruttore', 'Tipo', 'PFH', 'B10d', 'MTTFd', 'Verificato', ''].map(t => h('th', {}, t)))),
         h('tbody', {}, list.slice(0, UI.limite).map(a => h('tr', {},
-          h('td', {}, a.codice), h('td', { style: 'font-size:13px' }, a.descrizione || ''), h('td', { style: 'font-size:13px' }, a.produttore || ''), h('td', {}, a.tipo || ''),
+          h('td', {}, thumb(a, 32)), h('td', {}, a.codice), h('td', { style: 'font-size:13px' }, a.descrizione || ''), h('td', { style: 'font-size:13px' }, a.produttore || ''), h('td', {}, a.tipo || ''),
           h('td', {}, fmt(a.pfh)), h('td', {}, fmt(a.b10d, 0)), h('td', {}, fmt(a.mttfd, 1)),
           h('td', {}, h('input', { type: 'checkbox', checked: a.verificato, style: 'width:auto', title: a.fonte || 'senza fonte', onchange: e => { a.verificato = e.target.checked; render(); } })),
           h('td', { style: 'white-space:nowrap' },

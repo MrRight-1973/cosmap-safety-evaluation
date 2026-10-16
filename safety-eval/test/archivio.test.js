@@ -41,3 +41,10 @@ test('perProduttore e filtra', () => {
   assert.deepEqual(filtra(A, { daVerificare: true }).map(x => x.id), ['b', 'c']);
   assert.deepEqual(filtra(A, { testo: 'motor siem' }).map(x => x.id), ['c']);
 });
+
+test('unisci: articolo invariato che ora ha un\'immagine la riceve', () => {
+  const r = unisci([art('a', { pfh: 5, verificato: true })], [art('a', { pfh: 5, immagine: 'x/a.png' })]);
+  assert.equal(r.invariati, 1);
+  assert.equal(r.articoli[0].immagine, 'x/a.png');
+  assert.equal(r.articoli[0].verificato, true);
+});

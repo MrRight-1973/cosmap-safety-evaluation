@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "start": "node serve.js",
-    "test": "node --test calcolo-pl/test/regressione.test.js safety-eval/test/engine.test.js safety-eval/test/archivio.test.js safety-eval/test/sistema.test.js safety-eval/test/vdma.test.js",
+    "test": "node --test calcolo-pl/test/regressione.test.js safety-eval/test/engine.test.js safety-eval/test/archivio.test.js safety-eval/test/sistema.test.js safety-eval/test/vdma.test.js safety-eval/test/zip.test.js",
     "build": "node safety-eval/build.js"
   }
 }
