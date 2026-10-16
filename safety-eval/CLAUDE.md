@@ -8,14 +8,15 @@ Web app statica (HTML + JS, nessuna dipendenza; con `npm start` il server locale
 - `sistema.js`: lettore delle librerie SISTEMA `.slb` (database Firebird ODS 13) in puro JS, senza driver. Stesse regole di `../tools/slb2json.py`; verificato su Pizzato A26 contro Firebird 5 (206 articoli, 43 818 valori identici). Il file di prova non è nel repo (licenza).
 - `vdma.js`: lettore dei database VDMA 66413 (`.xml`), con parser XML minimo interno. Un articolo per use case; B10d = B10 / RDF e MTTFd = MTTF / RDF quando il database dà B10/MTTF + RDF (calcolo scritto nella fonte). Verificato su Siemens vdma.xml 1.29.0 (1730 articoli) contro ElementTree di Python. `importaPacchetto` legge anche lo .zip del costruttore (XML + immagini).
 - `zip.js`: lettore .zip minimo (stored/deflate via DecompressionStream). Immagini salvate da `../serve.js` in `data/immagini/<costruttore>/<file>` (`/api/immagini/...`), senza server in localStorage.
+- `schema.js`: schema a blocchi del passo 2 (percorsi alternativi = righe, blocchi in serie; percorso vuoto = blocco comune). Funzioni pure, stessi percorsi di `evalFunction`.
 - `engine.js`: motore di calcolo puro (UMD: `window.SafetyEngine` / `require`). Ogni costante cita la clausola della norma.
 - `articoli.js`: archivio di partenza. Solo valori con fonte; oggi i 7 articoli S120 da Entry-ID 76254308 V2.1, con `verificato: false` finché non si confrontano col PDF.
 - `build.js` → `safety-eval.html`: versione a file unico (incorpora tutti gli script) da consegnare (rigenerala dopo ogni modifica con `node build.js`).
-- `test/`: `engine.test.js`, `archivio.test.js`, `sistema.test.js`, `vdma.test.js`, `zip.test.js` (dati sintetici; `crea-zip.js` scrive gli .zip di prova). engine.test.js include i 4 casi di riferimento S120 (552, 840, 46, 92).
+- `test/`: `engine.test.js`, `archivio.test.js`, `sistema.test.js`, `vdma.test.js`, `zip.test.js`, `schema.test.js` (dati sintetici; `crea-zip.js` scrive gli .zip di prova). engine.test.js include i 4 casi di riferimento S120 (552, 840, 46, 92).
 
 ## Passi
 1. Progetto e funzioni: PLr dal grafo del rischio (all. A).
-2. Architettura: sottosistemi in serie con ruolo, metodo (PFH da certificato / architettura designata) e categoria. Un "percorso" non vuoto rende il sottosistema un iniziatore alternativo (OR); la funzione prende il percorso peggiore.
+2. Architettura: schema a blocchi interattivo. Ogni riga è un percorso (iniziatore alternativo, OR) con i blocchi in serie; i blocchi comuni (tratteggiati) stanno in tutti i percorsi; la funzione prende il percorso peggiore. Clic su un blocco → ruolo, percorso, metodo, categoria. Lo schema compare anche nel report.
 3. Componenti: articoli dall'archivio filtrati per tipologia secondo il ruolo del sottosistema (ricerca e "tutte le tipologie" per allargare), quantità; per l'architettura designata canale, DC e dati d'uso per B10d.
 4. Calcolo: MTTFd per canale (all. C, D.2, cap 100 anni, 2500 in cat. 4), DCavg (all. E), CCF (tab. F.1, ≥ 65), PFH da tab. K.1 inserito a mano.
 5. Verifica: PL = min(PL da somma PFH, PL dei sottosistemi) ≥ PLr; serve almeno un sottosistema per rilevamento, logica e attuazione.

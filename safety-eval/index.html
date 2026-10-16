@@ -50,6 +50,25 @@
   .big { font-size:24px; font-weight:700; }
   .kv { display:grid; grid-template-columns:max-content 1fr; gap:2px 14px; font-size:14px; }
   .kv span:nth-child(odd) { color:var(--mute); }
+  /* schema a blocchi */
+  .r-rilevamento { --rc:#0b6bcb; } .r-comunicazione { --rc:#7a5af8; } .r-logica { --rc:#1a7f4b; } .r-attuazione { --rc:#c2410c; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .r-rilevamento { --rc:#5aa7f5; } :root:not([data-theme="light"]) .r-comunicazione { --rc:#a48bff; } :root:not([data-theme="light"]) .r-logica { --rc:#4cc38a; } :root:not([data-theme="light"]) .r-attuazione { --rc:#f08a4b; } }
+  .schema { min-width:max-content; }
+  .lane { display:flex; align-items:stretch; gap:6px; padding:10px 0; border-bottom:1px dashed var(--line); }
+  .lane:last-child { border-bottom:none; }
+  .lane.peggiore .lane-name { color:var(--bad); }
+  .lane-name { width:112px; flex:none; display:flex; flex-direction:column; justify-content:center; gap:4px; font-weight:600; font-size:13.5px; }
+  .lane-name input { font-weight:600; }
+  .blk { flex:none; width:138px; border:1px solid var(--line); border-left:5px solid var(--rc); border-radius:8px; padding:6px 8px; background:var(--bg); font-size:12.5px; line-height:1.35; cursor:pointer; text-align:left; color:var(--ink); }
+  .blk b { display:block; font-size:13px; }
+  .blk.comune { border-style:dashed; border-left-style:solid; }
+  .blk.sel { outline:2px solid var(--acc); outline-offset:1px; }
+  .blk .ruolo { color:var(--rc); font-size:11px; text-transform:uppercase; letter-spacing:.03em; }
+  .arrow { align-self:center; color:var(--mute); font-size:16px; }
+  .lane-add { align-self:center; width:110px; flex:none; margin:0; }
+  .lane-res { margin-left:auto; padding-left:10px; flex:none; min-width:110px; display:flex; flex-direction:column; justify-content:center; align-items:flex-end; gap:3px; font-size:12.5px; }
+  .legenda { display:flex; flex-wrap:wrap; gap:12px; font-size:12.5px; color:var(--mute); margin:0 0 6px; }
+  .legenda span::before { content:''; display:inline-block; width:10px; height:10px; border-radius:2px; background:var(--rc); margin-right:5px; vertical-align:-1px; }
   @media print {
     header, .noprint { display:none !important; }
     body { background:#fff; color:#000; }
@@ -67,6 +86,7 @@
 <script src="sistema.js"></script>
 <script src="vdma.js"></script>
 <script src="zip.js"></script>
+<script src="schema.js"></script>
 <script>
 'use strict';
 const E = window.SafetyEngine;
@@ -246,26 +266,84 @@ function step1() {
 // ---- passo 2 ----
 const RUOLI = [['rilevamento', 'Rilevamento (sensori, pulsanti)'], ['logica', 'Logica (F-CPU, relè di sicurezza)'], ['attuazione', 'Attuazione (azionamenti, contattori)'], ['comunicazione', 'Comunicazione']];
 const METODI = [['pfh', 'PFH da certificato del costruttore'], ['arch', 'Architettura designata (MTTFd, DC, CCF)']];
+// Schema a blocchi: una riga per percorso (iniziatore alternativo), blocchi in serie da sinistra a destra.
+// I blocchi tratteggiati sono comuni a tutti i percorsi. editable = false per il report.
+const UI2 = { sel: null };
+const nuovoSS = (ruolo, percorso) => ({ id: uid(), nome: RUOLI.find(r => r[0] === ruolo)[1].split(' (')[0], ruolo, percorso, metodo: ruolo === 'rilevamento' ? 'arch' : 'pfh', categoria: null, componenti: [], ccf: {}, pfhK1: null });
+function schema(f, editable) {
+  const Sc = window.Schema;
+  const r = evalFn(f);
+  const res = new Map(r.subs.map(x => [x.ss, x.r]));
+  const nomi = Sc.percorsi(f);
+  const multi = nomi.length > 1;
+  const blocco = ss => {
+    const x = res.get(ss);
+    const n = ss.componenti.length;
+    const comune = multi && !(ss.percorso || '').trim();
+    return h(editable ? 'button' : 'div', { class: `blk r-${ss.ruolo}${comune ? ' comune' : ''}${UI2.sel === ss.id ? ' sel' : ''}`,
+      onclick: editable ? () => { UI2.sel = UI2.sel === ss.id ? null : ss.id; render(); } : null },
+      h('span', { class: 'ruolo' }, ss.ruolo + (comune ? ' · comune' : '')),
+      h('b', {}, ss.nome || '—'),
+      h('div', { class: 'mute' }, ss.metodo === 'arch' ? `cat. ${ss.categoria || '?'} · MTTFd/DC` : 'PFH da certificato'),
+      h('div', {}, n ? `${n} articol${n === 1 ? 'o' : 'i'}` : h('span', { class: 'warn' }, 'nessun articolo')),
+      n && x ? h('div', {}, x.nano != null ? `${fmt(x.nano)}·10⁻⁹/h ` : '', plPill(x.pl)) : null);
+  };
+  const corsia = nome => {
+    const path = r.paths.find(p => p.nome === (nome || 'unico'));
+    const proprio = f.sottosistemi.some(ss => (ss.percorso || '').trim() === nome);
+    const peggiore = multi && r.worst && r.worst.pl && r.worst.complete && path && r.worst === path;
+    const catena = Sc.catena(f, nome);
+    return h('div', { class: 'lane' + (peggiore ? ' peggiore' : '') },
+      h('div', { class: 'lane-name' },
+        !multi ? 'Percorso unico'
+          : editable ? h('input', { value: nome, title: 'Nome del percorso', onchange: e => { if (!Sc.rinominaPercorso(f, nome, e.target.value)) e.target.value = nome; render(); } })
+          : nome,
+        peggiore ? h('span', { style: 'font-size:11.5px;font-weight:400' }, 'percorso peggiore') : null,
+        editable && multi ? h('a', { href: '#', style: 'font-size:11.5px;font-weight:400', onclick: e => { e.preventDefault();
+          if (confirm(`Eliminare il percorso "${nome}" e i blocchi solo suoi?`)) { Sc.eliminaPercorso(f, nome); render(); } } }, 'elimina') : null),
+      catena.flatMap((ss, i) => [i ? h('span', { class: 'arrow' }, '→') : null, blocco(ss)]),
+      editable ? h('select', { class: 'lane-add', onchange: e => { const ss = nuovoSS(e.target.value, nome); f.sottosistemi.push(ss); UI2.sel = ss.id; render(); } },
+        h('option', { value: '', selected: true, disabled: true }, '+ blocco'), RUOLI.map(([k, t]) => h('option', { value: k }, t.split(' (')[0]))) : null,
+      h('div', { class: 'lane-res' },
+        multi && !proprio ? h('span', { class: 'warn' }, 'manca l\'iniziatore')
+          : path ? [h('span', {}, `Σ PFH ${fmt(path.nano)}·10⁻⁹/h`), path.complete ? plPill(path.pl, r.plr) : h('span', { class: 'warn' }, 'incompleto')] : null));
+  };
+  return h('div', {},
+    h('div', { class: 'legenda' }, RUOLI.map(([k, t]) => h('span', { class: 'r-' + k }, t.split(' (')[0])),
+      multi ? h('span', { style: '--rc:transparent;border:1px dashed var(--mute);padding:0 4px;border-radius:4px' }, 'tratteggiato = comune a tutti i percorsi') : null),
+    h('div', { class: 'scroll' }, h('div', { class: 'schema' }, nomi.map(corsia))),
+    h('p', { class: 'note' }, multi
+      ? `La funzione ha il PL del percorso peggiore: ${r.worst && r.worst.pl ? 'PL ' + r.worst.pl + ' (' + r.worst.nome + ')' : 'non ancora calcolabile'}${r.plr ? ', richiesto PL ' + r.plr : ''}.`
+      : 'Tutti i blocchi sono in serie: devono funzionare tutti perché la funzione intervenga.'));
+}
+function blockEditor(f) {
+  const i = f.sottosistemi.findIndex(x => x.id === UI2.sel);
+  if (i < 0) return h('p', { class: 'note' }, f.sottosistemi.length ? 'Clicca un blocco per modificarlo.' : 'Aggiungi i blocchi con "+ blocco": rilevamento, logica e attuazione.');
+  const ss = f.sottosistemi[i];
+  const nomi = window.Schema.percorsi(f).filter(Boolean);
+  return h('section', { class: 'r-' + ss.ruolo, style: 'border-left:5px solid var(--rc)' },
+    h('div', { class: 'grid' },
+      field('Nome blocco', () => ss.nome, v => ss.nome = v),
+      field('Ruolo', () => ss.ruolo, v => ss.ruolo = v, { options: RUOLI }),
+      nomi.length ? field('Percorso', () => ss.percorso || null, v => ss.percorso = v || '', { options: [[null, 'Comune a tutti i percorsi'], ...nomi.map(n => [n, n])] }) : null,
+      field('Metodo', () => ss.metodo, v => ss.metodo = v, { options: METODI }),
+      ss.metodo === 'arch' ? field('Categoria', () => ss.categoria, v => ss.categoria = v, { options: [[null, '—'], ['B', 'B'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']] }) : null),
+    ss.metodo === 'arch' && ss.categoria === '1' ? check('Componenti ben collaudati (ISO 13849-2)', () => ss.collaudati, v => ss.collaudati = v) : null,
+    h('div', { class: 'row' },
+      h('button', { onclick: () => go(3) }, 'Scegli gli articoli (passo 3) →'),
+      h('span', { class: 'spacer' }),
+      h('button', { onclick: () => { f.sottosistemi.splice(i, 1); UI2.sel = null; render(); } }, 'Elimina blocco')));
+}
 function step2() {
   const f = fn();
   return [
     h('h1', {}, '2. Architettura'),
-    h('p', { class: 'sub' }, 'Dividi la funzione in sottosistemi in serie. Se più iniziatori possono attivarla (es. fungo e pannello), dai a ciascuno un nome di percorso diverso: la funzione avrà il PL del percorso peggiore. I sottosistemi senza percorso sono comuni a tutti.'),
+    h('p', { class: 'sub' }, 'Costruisci lo schema a blocchi della funzione: in ogni riga i blocchi sono in serie, da chi rileva a chi arresta. Se la funzione può partire da iniziatori diversi (es. funghi su F-DI oppure fungo sul pannello in PROFIsafe), aggiungi un percorso alternativo per ciascuno: la funzione avrà il PL del percorso peggiore. I blocchi comuni (F-CPU, azionamenti) compaiono in tutti i percorsi.'),
     fnTabs(),
     f ? [
-      ...f.sottosistemi.map((ss, i) => h('section', {},
-        h('div', { class: 'grid' },
-          field('Nome sottosistema', () => ss.nome, v => ss.nome = v),
-          field('Ruolo', () => ss.ruolo, v => ss.ruolo = v, { options: RUOLI }),
-          field('Percorso (vuoto = comune)', () => ss.percorso, v => ss.percorso = v, { placeholder: 'es. Fungo F-DI' }),
-          field('Metodo', () => ss.metodo, v => ss.metodo = v, { options: METODI }),
-          ss.metodo === 'arch' ? field('Categoria', () => ss.categoria, v => ss.categoria = v, { options: [[null, '—'], ['B', 'B'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']] }) : null),
-        ss.metodo === 'arch' && ss.categoria === '1' ? check('Componenti ben collaudati (ISO 13849-2)', () => ss.collaudati, v => ss.collaudati = v) : null,
-        h('div', { class: 'row' }, h('span', { class: 'spacer' }),
-          h('button', { onclick: () => { f.sottosistemi.splice(i, 1); render(); } }, 'Elimina sottosistema')))),
-      h('div', { class: 'row' }, ...RUOLI.slice(0, 3).map(([r, t]) => h('button', { onclick: () => {
-        f.sottosistemi.push({ id: uid(), nome: t.split(' (')[0], ruolo: r, percorso: '', metodo: r === 'rilevamento' ? 'arch' : 'pfh', categoria: null, componenti: [], ccf: {}, pfhK1: null });
-        render(); } }, '+ ' + t.split(' (')[0]))),
+      h('section', {}, schema(f, true),
+        h('div', { class: 'row' }, h('button', { onclick: () => { window.Schema.aggiungiPercorso(f); render(); } }, '+ Percorso alternativo'))),
+      blockEditor(f),
     ] : null,
   ];
 }
@@ -418,6 +496,7 @@ function step6() {
     S.funzioni.map(f => [
       f.descrizione ? h('p', {}, h('b', {}, f.nome + ': '), f.descrizione) : null,
       h('p', { class: 'mute' }, `Grafo del rischio: ${f.S || '?'} ${f.F || '?'} ${f.P || '?'}`),
+      f.sottosistemi.length ? h('section', {}, h('h2', {}, `Schema a blocchi: ${f.nome}`), schema(f, false)) : null,
       verdict(f, evalFn(f)),
     ]),
     h('section', {}, h('h2', {}, 'Componenti usati e fonti'), h('div', { class: 'scroll' }, h('table', {},
