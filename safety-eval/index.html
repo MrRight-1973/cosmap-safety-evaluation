@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Safety evaluation</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1b2430; --mute:#5d6b7c; --line:#d9dee5; --acc:#0b6bcb; --ok:#1a7f4b; --warn:#9a5c00; --bad:#b3261e; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg:#14181d; --card:#1c2229; --ink:#e8ecf1; --mute:#93a0b0; --line:#313a45; --acc:#5aa7f5; --ok:#4cc38a; --warn:#e8a33d; --bad:#ff7a70; }
+  }
+  :root[data-theme="dark"] { --bg:#14181d; --card:#1c2229; --ink:#e8ecf1; --mute:#93a0b0; --line:#313a45; --acc:#5aa7f5; --ok:#4cc38a; --warn:#e8a33d; --bad:#ff7a70; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 system-ui,"Segoe UI",sans-serif; }
+  header { background:var(--card); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:2; }
+  .hwrap { max-width:1040px; margin:0 auto; padding:10px 16px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  .hwrap b { margin-right:10px; }
+  nav { display:flex; flex-wrap:wrap; gap:4px; }
+  nav button { border-radius:99px; }
+  nav button.on { background:var(--acc); border-color:var(--acc); color:#fff; }
+  main { max-width:1040px; margin:0 auto; padding:18px 16px 60px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  h2 { font-size:16px; margin:0 0 10px; }
+  h3 { font-size:14px; margin:12px 0 6px; }
+  .sub { color:var(--mute); margin:0 0 16px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:14px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px 14px; }
+  label { display:block; font-size:13px; color:var(--mute); }
+  input, select, textarea { width:100%; padding:6px 8px; margin-top:3px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); font:inherit; }
+  textarea { min-height:56px; resize:vertical; }
+  .chk { display:flex; gap:8px; align-items:center; color:var(--ink); font-size:14px; margin:4px 0; }
+  .chk input { width:auto; margin:0; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:5px 6px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  th { color:var(--mute); font-weight:600; font-size:12px; }
+  td input, td select { margin:0; min-width:70px; }
+  button { padding:6px 12px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--ink); font:inherit; cursor:pointer; }
+  button.p { background:var(--acc); border-color:var(--acc); color:#fff; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:10px; }
+  .spacer { flex:1; }
+  .note { font-size:12.5px; color:var(--mute); margin:8px 0 0; }
+  .pill { display:inline-block; padding:1px 10px; border-radius:99px; font-weight:700; border:1px solid currentColor; }
+  .ok { color:var(--ok); } .warn { color:var(--warn); } .bad { color:var(--bad); } .mute { color:var(--mute); }
+  ul.list { margin:6px 0 0; padding-left:18px; font-size:13.5px; }
+  .scroll { overflow-x:auto; }
+  .tabs { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
+  .tabs button.on { border-color:var(--acc); color:var(--acc); font-weight:600; }
+  .big { font-size:24px; font-weight:700; }
+  .kv { display:grid; grid-template-columns:max-content 1fr; gap:2px 14px; font-size:14px; }
+  .kv span:nth-child(odd) { color:var(--mute); }
+  @media print {
+    header, .noprint { display:none !important; }
+    body { background:#fff; color:#000; }
+    section { border:none; padding:0; }
+  }
+</style>
+</head>
+<body>
+<header><div class="hwrap"><b>Safety evaluation</b><nav id="nav"></nav></div></header>
+<main id="app"></main>
+
+<script src="engine.js"></script>
+<script src="articoli.js"></script>
+<script>
+'use strict';
+const E = window.SafetyEngine;
+const KEY = 'safety-eval-v1';
+const STEPS = [
+  [1, 'Progetto e funzioni'], [2, 'Architettura'], [3, 'Componenti'],
+  [4, 'Calcolo'], [5, 'Verifica'], [6, 'Report'], ['db', 'Archivio articoli'],
+];
+const clone = o => JSON.parse(JSON.stringify(o));
+const uid = () => Math.random().toString(36).slice(2, 9);
+const num = v => (v === '' || v == null ? null : Number(v));
+const fmt = (n, d = 2) => (n == null || isNaN(n) ? '—' : n.toLocaleString('it-IT', { maximumFractionDigits: d }));
+
+function defaultState() {
+  return {
+    step: 1, fSel: 0,
+    progetto: { nome: '', macchina: '', autore: '', data: new Date().toISOString().slice(0, 10), missionTime: 20 },
+    funzioni: [],
+    articoli: clone(window.ARTICOLI_DEFAULT || []),
+  };
+}
+let S;
+try { S = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { S = null; }
+if (!S) S = defaultState();
+function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+
+// ---- piccolo helper per costruire il DOM ----
+function h(tag, attrs, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+    else if (k === 'class') el.className = v;
+    else if (k === 'value') el.value = v;
+    else if (k === 'checked') el.checked = !!v;
+    else el.setAttribute(k, v === true ? '' : v);
+  }
+  for (const c of kids.flat(Infinity)) if (c != null && c !== false) el.append(c.nodeType ? c : String(c));
+  return el;
+}
+// campo collegato: get() legge il valore, set(v) lo scrive e ridisegna
+function field(label, get, set, opt = {}) {
+  const type = opt.type || 'text';
+  let inp;
+  if (opt.options) {
+    inp = h('select', { onchange: e => { set(e.target.value || null); render(); } },
+      opt.options.map(([v, t]) => h('option', { value: v ?? '', selected: (get() ?? '') === (v ?? '') }, t)));
+  } else if (type === 'textarea') {
+    inp = h('textarea', { onchange: e => { set(e.target.value); render(); } }, get() || '');
+  } else {
+    inp = h('input', { type, value: get() ?? '', min: opt.min, step: opt.step, placeholder: opt.placeholder,
+      onchange: e => { set(type === 'number' ? num(e.target.value) : e.target.value); render(); } });
+  }
+  return label ? h('label', {}, label, inp) : inp;
+}
+function check(label, get, set) {
+  return h('label', { class: 'chk' }, h('input', { type: 'checkbox', checked: get(), onchange: e => { set(e.target.checked); render(); } }), label);
+}
+const plPill = (pl, req) => {
+  if (!pl) return h('span', { class: 'pill mute' }, 'n.d.');
+  const cls = req ? (E.plAtLeast(pl, req) ? 'ok' : 'bad') : '';
+  return h('span', { class: 'pill ' + cls }, 'PL ' + pl);
+};
+const art = id => S.articoli.find(a => a.id === id);
+const fn = () => S.funzioni[S.fSel];
+const evalFn = f => E.evalFunction(f, S.articoli, S.progetto.missionTime);
+
+function issues(errors, warns) {
+  if (!errors.length && !warns.length) return null;
+  return h('ul', { class: 'list' },
+    errors.map(e => h('li', { class: 'bad' }, e)), warns.map(w => h('li', { class: 'warn' }, w)));
+}
+function fnTabs() {
+  if (!S.funzioni.length) return h('p', { class: 'warn' }, 'Prima definisci almeno una funzione di sicurezza al passo 1.');
+  if (S.fSel >= S.funzioni.length) S.fSel = 0;
+  return h('div', { class: 'tabs' }, S.funzioni.map((f, i) =>
+    h('button', { class: i === S.fSel ? 'on' : '', onclick: () => { S.fSel = i; render(); } }, f.nome || `Funzione ${i + 1}`)));
+}
+function navButtons() {
+  const i = STEPS.findIndex(s => s[0] === S.step);
+  return h('div', { class: 'row noprint' },
+    i > 0 && STEPS[i - 1][0] !== 'db' ? h('button', { onclick: () => go(STEPS[i - 1][0]) }, '← ' + STEPS[i - 1][1]) : null,
+    h('span', { class: 'spacer' }),
+    i < 5 ? h('button', { class: 'p', onclick: () => go(STEPS[i + 1][0]) }, STEPS[i + 1][1] + ' →') : null);
+}
+function go(step) { S.step = step; render(); window.scrollTo(0, 0); }
+
+// ---- passo 1 ----
+const RG = {
+  S: [['S1', 'S1: lesione lieve, reversibile'], ['S2', 'S2: lesione grave, irreversibile o morte']],
+  F: [['F1', 'F1: esposizione rara o breve'], ['F2', 'F2: esposizione frequente o prolungata']],
+  P: [['P1', 'P1: possibile evitare il pericolo'], ['P2', 'P2: quasi impossibile evitarlo']],
+};
+function step1() {
+  const p = S.progetto;
+  return [
+    h('h1', {}, '1. Progetto e funzioni di sicurezza'),
+    h('p', { class: 'sub' }, 'Descrivi la macchina e le funzioni di sicurezza. Il PLr si ricava dal grafo del rischio (ISO 13849-1, allegato A).'),
+    h('section', {}, h('h2', {}, 'Progetto'), h('div', { class: 'grid' },
+      field('Nome valutazione', () => p.nome, v => p.nome = v),
+      field('Macchina / impianto', () => p.macchina, v => p.macchina = v),
+      field('Autore', () => p.autore, v => p.autore = v),
+      field('Data', () => p.data, v => p.data = v, { type: 'date' }),
+      field('Mission time [anni]', () => p.missionTime, v => p.missionTime = v || 20, { type: 'number', min: 1 }))),
+    ...S.funzioni.map((f, i) => h('section', {},
+      h('div', { class: 'row', style: 'margin-top:0' }, h('h2', { style: 'margin:0' }, `Funzione ${i + 1}`), h('span', { class: 'spacer' }),
+        h('span', {}, 'PLr ', h('b', {}, E.plr(f.S, f.F, f.P) || '—')),
+        h('button', { onclick: () => { if (confirm('Eliminare la funzione?')) { S.funzioni.splice(i, 1); render(); } } }, 'Elimina')),
+      h('div', { class: 'grid', style: 'margin-top:10px' },
+        field('Nome', () => f.nome, v => f.nome = v),
+        field('Gravità', () => f.S, v => f.S = v, { options: [[null, '—'], ...RG.S] }),
+        field('Frequenza ed esposizione', () => f.F, v => f.F = v, { options: [[null, '—'], ...RG.F] }),
+        field('Possibilità di evitare', () => f.P, v => f.P = v, { options: [[null, '—'], ...RG.P] })),
+      h('div', { style: 'margin-top:10px' }, field('Descrizione (evento che la attiva, reazione, stato sicuro)', () => f.descrizione, v => f.descrizione = v, { type: 'textarea' })))),
+    h('div', { class: 'row' }, h('button', { onclick: () => {
+      S.funzioni.push({ id: uid(), nome: 'Arresto di emergenza', descrizione: '', S: null, F: null, P: null, sottosistemi: [] });
+      render(); } }, 'Aggiungi funzione di sicurezza')),
+  ];
+}
+
+// ---- passo 2 ----
+const RUOLI = [['rilevamento', 'Rilevamento (sensori, pulsanti)'], ['logica', 'Logica (F-CPU, relè di sicurezza)'], ['attuazione', 'Attuazione (azionamenti, contattori)'], ['comunicazione', 'Comunicazione']];
+const METODI = [['pfh', 'PFH da certificato del costruttore'], ['arch', 'Architettura designata (MTTFd, DC, CCF)']];
+function step2() {
+  const f = fn();
+  return [
+    h('h1', {}, '2. Architettura'),
+    h('p', { class: 'sub' }, 'Dividi la funzione in sottosistemi in serie. Se più iniziatori possono attivarla (es. fungo e pannello), dai a ciascuno un nome di percorso diverso: la funzione avrà il PL del percorso peggiore. I sottosistemi senza percorso sono comuni a tutti.'),
+    fnTabs(),
+    f ? [
+      ...f.sottosistemi.map((ss, i) => h('section', {},
+        h('div', { class: 'grid' },
+          field('Nome sottosistema', () => ss.nome, v => ss.nome = v),
+          field('Ruolo', () => ss.ruolo, v => ss.ruolo = v, { options: RUOLI }),
+          field('Percorso (vuoto = comune)', () => ss.percorso, v => ss.percorso = v, { placeholder: 'es. Fungo F-DI' }),
+          field('Metodo', () => ss.metodo, v => ss.metodo = v, { options: METODI }),
+          ss.metodo === 'arch' ? field('Categoria', () => ss.categoria, v => ss.categoria = v, { options: [[null, '—'], ['B', 'B'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']] }) : null),
+        ss.metodo === 'arch' && ss.categoria === '1' ? check('Componenti ben collaudati (ISO 13849-2)', () => ss.collaudati, v => ss.collaudati = v) : null,
+        h('div', { class: 'row' }, h('span', { class: 'spacer' }),
+          h('button', { onclick: () => { f.sottosistemi.splice(i, 1); render(); } }, 'Elimina sottosistema')))),
+      h('div', { class: 'row' }, ...RUOLI.slice(0, 3).map(([r, t]) => h('button', { onclick: () => {
+        f.sottosistemi.push({ id: uid(), nome: t.split(' (')[0], ruolo: r, percorso: '', metodo: r === 'rilevamento' ? 'arch' : 'pfh', categoria: null, componenti: [], ccf: {}, pfhK1: null });
+        render(); } }, '+ ' + t.split(' (')[0]))),
+    ] : null,
+  ];
+}
+
+// ---- passo 3 ----
+function step3() {
+  const f = fn();
+  const opts = [[null, '— scegli —'], ...S.articoli.map(a => [a.id, `${a.codice} · ${a.descrizione || ''}`])];
+  return [
+    h('h1', {}, '3. Componenti dall\'archivio'),
+    h('p', { class: 'sub' }, 'Per ogni sottosistema scegli gli articoli. Se un articolo manca, aggiungilo in "Archivio articoli" con la sua fonte.'),
+    fnTabs(),
+    f ? f.sottosistemi.map(ss => {
+      const arch = ss.metodo === 'arch';
+      return h('section', {},
+        h('h2', {}, ss.nome, h('span', { class: 'mute', style: 'font-weight:400' }, ` · ${arch ? 'architettura designata, cat. ' + (ss.categoria || '?') : 'PFH da certificato'}${ss.percorso ? ' · percorso ' + ss.percorso : ''}`)),
+        h('div', { class: 'scroll' }, h('table', {},
+          h('thead', {}, h('tr', {}, h('th', {}, 'Articolo'), h('th', {}, 'Qtà'),
+            arch ? [h('th', {}, 'Canale'), h('th', {}, 'DC %'), h('th', {}, 'Giorni/anno'), h('th', {}, 'Ore/giorno'), h('th', {}, 'Ciclo [s]')] : h('th', {}, 'PFH cad.'),
+            h('th', {}, 'Fonte'), h('th', {}))),
+          h('tbody', {}, ss.componenti.map((c, i) => {
+            const a = art(c.articoloId);
+            const b10 = a && a.mttfd == null && a.b10d != null;
+            return h('tr', {},
+              h('td', {}, field(null, () => c.articoloId, v => c.articoloId = v, { options: opts })),
+              h('td', {}, field(null, () => c.qty, v => c.qty = v ?? 1, { type: 'number', min: 1 })),
+              arch ? [
+                h('td', {}, field(null, () => String(c.canale || 1), v => c.canale = Number(v), { options: [['1', '1'], ['2', '2']] })),
+                h('td', {}, field(null, () => c.dc, v => c.dc = v, { type: 'number', min: 0, step: 'any' })),
+                ...['dop', 'hop', 'tcycle'].map(k => h('td', {}, b10 ? field(null, () => c[k], v => c[k] = v, { type: 'number', min: 0, step: 'any' }) : h('span', { class: 'mute' }, '—'))),
+              ] : h('td', {}, a ? (a.pfh == null ? h('span', { class: 'warn' }, 'mancante') : fmt(a.pfh) + '·10⁻⁹/h') : '—'),
+              h('td', { class: 'mute', style: 'font-size:12px;max-width:260px' }, a ? (a.fonte || h('span', { class: 'warn' }, 'senza fonte')) : ''),
+              h('td', {}, h('button', { onclick: () => { ss.componenti.splice(i, 1); render(); } }, '×')));
+          })))),
+        h('div', { class: 'row' }, h('button', { onclick: () => { ss.componenti.push({ articoloId: null, qty: 1, canale: 1, dc: null }); render(); } }, 'Aggiungi componente')),
+        arch ? h('p', { class: 'note' }, 'Giorni/anno, ore/giorno e tempo ciclo servono solo per gli articoli con B10d: MTTFd = B10d / (0,1 · nop), nop = giorni · ore · 3600 / ciclo (ISO 13849-1, allegato C).') : null);
+    }) : null,
+  ];
+}
+
+// ---- passo 4 ----
+function step4() {
+  const f = fn();
+  const r = f && evalFn(f);
+  return [
+    h('h1', {}, '4. Calcolo dei sottosistemi'),
+    h('p', { class: 'sub' }, 'PFH in 10⁻⁹/h. Per l\'architettura designata compila le misure contro i guasti di causa comune e inserisci il PFH della tabella K.1.'),
+    fnTabs(),
+    f ? r.subs.map(({ ss, r: x }) => h('section', {},
+      h('div', { class: 'row', style: 'margin-top:0' }, h('h2', { style: 'margin:0' }, ss.nome), h('span', { class: 'spacer' }), plPill(x.pl)),
+      x.metodo === 'pfh'
+        ? h('div', { class: 'kv', style: 'margin-top:8px' }, h('span', {}, 'PFH somma'), h('span', {}, fmt(x.nano) + '·10⁻⁹/h'))
+        : [
+          h('div', { class: 'kv', style: 'margin-top:8px' },
+            h('span', {}, 'MTTFd canale 1'), h('span', {}, fmt(x.ch1, 1) + ' anni'),
+            h('span', {}, 'MTTFd canale 2'), h('span', {}, fmt(x.ch2, 1) + ' anni'),
+            h('span', {}, 'MTTFd del sottosistema'), h('span', {}, `${fmt(x.mttfd, 1)} anni (${x.mttfdLevel || '—'})`),
+            h('span', {}, 'DCavg'), h('span', {}, `${fmt(x.dcavg, 1)} % (${x.dcLevel || '—'})`),
+            h('span', {}, 'Categoria'), h('span', {}, ss.categoria || '—')),
+          E.CATEGORIE[ss.categoria] && E.CATEGORIE[ss.categoria].ccf ? [
+            h('h3', {}, `Guasti di causa comune: ${x.ccf} / 100 punti (minimo ${E.CCF_MIN})`),
+            E.CCF_MEASURES.map(m => check(`${m.testo} (${m.punti})`, () => !!(ss.ccf || {})[m.id], v => { ss.ccf = ss.ccf || {}; ss.ccf[m.id] = v; })),
+          ] : null,
+          h('div', { class: 'grid', style: 'margin-top:10px' },
+            field(`PFH da tab. K.1 per cat. ${ss.categoria || '?'}, DCavg ${x.dcLevel || '?'}, MTTFd ${fmt(x.mttfd, 0)} anni [10⁻⁹/h]`, () => ss.pfhK1, v => ss.pfhK1 = v, { type: 'number', min: 0, step: 'any' })),
+        ],
+      issues(x.errors, x.warns))) : null,
+  ];
+}
+
+// ---- passo 5 ----
+function verdict(f, r) {
+  return h('section', {},
+    h('div', { class: 'row', style: 'margin-top:0' }, h('h2', { style: 'margin:0' }, f.nome),
+      h('span', { class: 'spacer' }), h('span', {}, 'PLr ', h('b', {}, r.plr || '—')), plPill(r.pl, r.plr)),
+    h('p', { class: 'big ' + (r.ok ? 'ok' : 'bad') }, r.ok ? 'Requisito soddisfatto' : 'Requisito non dimostrato'),
+    h('div', { class: 'scroll' }, h('table', {},
+      h('thead', {}, h('tr', {}, h('th', {}, 'Percorso'), h('th', {}, 'Sottosistemi in serie'), h('th', {}, 'PFH [10⁻⁹/h]'), h('th', {}, 'PL'))),
+      h('tbody', {}, r.paths.map(p => h('tr', {}, h('td', {}, p.nome), h('td', {}, p.sottosistemi.join(' + ')),
+        h('td', {}, fmt(p.nano) + (p.complete ? '' : ' (incompleto)')), h('td', {}, p.pl || 'n.d.')))))),
+    issues(r.errors, r.warns));
+}
+function step5() {
+  return [
+    h('h1', {}, '5. Verifica PL ≥ PLr'),
+    h('p', { class: 'sub' }, 'Il PL della funzione è il minimo tra quello ricavato dalla somma dei PFH e quelli dei singoli sottosistemi (ISO 13849-1, 6.3). Restano da verificare a parte le misure contro gli errori sistematici e la validazione (ISO 13849-2).'),
+    S.funzioni.length ? S.funzioni.map(f => verdict(f, evalFn(f))) : fnTabs(),
+  ];
+}
+
+// ---- passo 6 ----
+function download(name, text) {
+  const a = h('a', { href: URL.createObjectURL(new Blob([text], { type: 'application/json' })), download: name });
+  document.body.append(a); a.click(); a.remove();
+}
+function importFile(cb) {
+  const i = h('input', { type: 'file', accept: '.json,application/json', onchange: async e => {
+    try { cb(JSON.parse(await e.target.files[0].text())); render(); } catch (err) { alert('File non valido: ' + err.message); } } });
+  i.click();
+}
+function step6() {
+  const p = S.progetto;
+  const used = new Set(S.funzioni.flatMap(f => f.sottosistemi.flatMap(ss => ss.componenti.map(c => c.articoloId))));
+  return [
+    h('div', { class: 'row noprint', style: 'margin-top:0;margin-bottom:12px' },
+      h('button', { class: 'p', onclick: () => window.print() }, 'Stampa / salva PDF'),
+      h('button', { onclick: () => download(`${p.nome || 'safety-evaluation'}.json`, JSON.stringify(S, null, 2)) }, 'Esporta valutazione'),
+      h('button', { onclick: () => importFile(d => { if (!d.funzioni) throw new Error('manca "funzioni"'); S = Object.assign(defaultState(), d); }) }, 'Importa valutazione'),
+      h('span', { class: 'spacer' }),
+      h('button', { onclick: () => { if (confirm('Cancellare la valutazione corrente? L\'archivio articoli resta.')) { const a = S.articoli; S = defaultState(); S.articoli = a; render(); } } }, 'Nuova valutazione')),
+    h('h1', {}, p.nome || 'Safety evaluation'),
+    h('div', { class: 'kv', style: 'margin-bottom:14px' },
+      h('span', {}, 'Macchina'), h('span', {}, p.macchina || '—'), h('span', {}, 'Autore'), h('span', {}, p.autore || '—'),
+      h('span', {}, 'Data'), h('span', {}, p.data || '—'), h('span', {}, 'Mission time'), h('span', {}, `${p.missionTime} anni`),
+      h('span', {}, 'Norme'), h('span', {}, 'ISO 13849-1 (PL), IEC 62061 (SIL equivalente)')),
+    S.funzioni.map(f => [
+      f.descrizione ? h('p', {}, h('b', {}, f.nome + ': '), f.descrizione) : null,
+      h('p', { class: 'mute' }, `Grafo del rischio: ${f.S || '?'} ${f.F || '?'} ${f.P || '?'}`),
+      verdict(f, evalFn(f)),
+    ]),
+    h('section', {}, h('h2', {}, 'Componenti usati e fonti'), h('div', { class: 'scroll' }, h('table', {},
+      h('thead', {}, h('tr', {}, h('th', {}, 'Articolo'), h('th', {}, 'PFH'), h('th', {}, 'B10d'), h('th', {}, 'MTTFd'), h('th', {}, 'Fonte'), h('th', {}, 'Verificato'))),
+      h('tbody', {}, S.articoli.filter(a => used.has(a.id)).map(a => h('tr', {},
+        h('td', {}, `${a.codice} · ${a.descrizione || ''}`), h('td', {}, fmt(a.pfh)), h('td', {}, fmt(a.b10d, 0)), h('td', {}, fmt(a.mttfd, 1)),
+        h('td', { style: 'font-size:12px' }, `${a.fonte || 'SENZA FONTE'}${a.dataFonte ? ' (' + a.dataFonte + ')' : ''}`),
+        h('td', { class: a.verificato ? 'ok' : 'warn' }, a.verificato ? 'sì' : 'no'))))))),
+    h('p', { class: 'note' }, 'Risultati da confrontare con SISTEMA o Safety Evaluation Tool prima di usarli in documenti di conformità.'),
+  ];
+}
+
+// ---- archivio ----
+const ART_COLS = [
+  ['codice', 'Codice'], ['descrizione', 'Descrizione'], ['produttore', 'Produttore'], ['tipo', 'Tipo', [['sensore', 'sensore'], ['logica', 'logica'], ['attuatore', 'attuatore'], ['comunicazione', 'comunicazione']]],
+  ['pfh', 'PFH [10⁻⁹/h]', 'number'], ['b10d', 'B10d [cicli]', 'number'], ['mttfd', 'MTTFd [anni]', 'number'],
+  ['plMax', 'PL max', [[null, '—'], ['a', 'a'], ['b', 'b'], ['c', 'c'], ['d', 'd'], ['e', 'e']]],
+  ['fonte', 'Fonte (documento, pagina)'], ['dataFonte', 'Data fonte'], ['note', 'Note'],
+];
+function stepDb() {
+  return [
+    h('h1', {}, 'Archivio articoli'),
+    h('p', { class: 'sub' }, 'Ogni valore deve venire da un certificato o da un documento del costruttore: scrivi la fonte e spunta "verificato" solo dopo averlo confrontato con l\'originale. I campi vuoti non vengono mai riempiti con valori tipici.'),
+    h('div', { class: 'row noprint', style: 'margin:0 0 12px' },
+      h('button', { class: 'p', onclick: () => { S.articoli.push({ id: uid(), codice: 'Nuovo articolo', tipo: 'sensore', pfh: null, b10d: null, mttfd: null, plMax: null, fonte: '', dataFonte: '', verificato: false, note: '' }); render(); } }, 'Aggiungi articolo'),
+      h('button', { onclick: () => download('archivio-articoli.json', JSON.stringify(S.articoli, null, 2)) }, 'Esporta archivio'),
+      h('button', { onclick: () => importFile(d => { if (!Array.isArray(d)) throw new Error('serve un elenco di articoli'); const ids = new Set(S.articoli.map(a => a.id)); d.forEach(a => { if (!a.id || ids.has(a.id)) a.id = uid(); }); S.articoli.push(...d); }) }, 'Importa archivio')),
+    h('section', {}, h('div', { class: 'scroll' }, h('table', {},
+      h('thead', {}, h('tr', {}, ART_COLS.map(c => h('th', {}, c[1])), h('th', {}, 'Verificato'), h('th', {}))),
+      h('tbody', {}, S.articoli.map((a, i) => h('tr', {},
+        ART_COLS.map(([k, , t]) => h('td', {}, field(null, () => a[k], v => a[k] = v,
+          Array.isArray(t) ? { options: t } : { type: t || 'text', step: 'any', min: 0 }))),
+        h('td', {}, h('input', { type: 'checkbox', checked: a.verificato, style: 'width:auto', onchange: e => { a.verificato = e.target.checked; render(); } })),
+        h('td', {}, h('button', { onclick: () => { if (confirm(`Eliminare ${a.codice}?`)) { S.articoli.splice(i, 1); render(); } } }, '×')))))))),
+  ];
+}
+
+let rendering = false;
+function render() {
+  // un change che scatta sul blur mentre si sostituisce il DOM ridisegna dopo, non durante
+  if (rendering) { setTimeout(render); return; }
+  rendering = true;
+  try { draw(); } finally { rendering = false; }
+}
+function draw() {
+  save();
+  document.getElementById('nav').replaceChildren(...STEPS.map(([k, t]) =>
+    h('button', { class: S.step === k ? 'on' : '', onclick: () => go(k) }, typeof k === 'number' ? `${k}. ${t}` : t)));
+  const views = { 1: step1, 2: step2, 3: step3, 4: step4, 5: step5, 6: step6, db: stepDb };
+  const y = window.scrollY;
+  document.getElementById('app').replaceChildren(h('div', {}, (views[S.step] || step1)(), S.step !== 'db' ? navButtons() : null));
+  window.scrollTo(0, y);
+}
+render();
+</script>
+</body>
+</html>

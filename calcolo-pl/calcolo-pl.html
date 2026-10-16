@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calcolo PL emergenza</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1b2430; --mute:#5d6b7c; --line:#d9dee5; --acc:#0b6bcb; --ok:#1a7f4b; --warn:#b26a00; --bad:#b3261e; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg:#14181d; --card:#1c2229; --ink:#e8ecf1; --mute:#93a0b0; --line:#313a45; --acc:#5aa7f5; --ok:#4cc38a; --warn:#e8a33d; --bad:#ff7a70; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 system-ui,Segoe UI,sans-serif; }
+  main { max-width:960px; margin:0 auto; padding:20px 16px 48px; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  h2 { font-size:16px; margin:0 0 10px; }
+  .sub { color:var(--mute); margin:0 0 18px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:14px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px 14px; }
+  label { display:block; font-size:13px; color:var(--mute); }
+  input[type=number], input[type=text], select { width:100%; padding:6px 8px; margin-top:3px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); font:inherit; }
+  .chk { display:flex; gap:8px; align-items:center; color:var(--ink); font-size:14px; }
+  .chk input { width:auto; margin:0; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th,td { text-align:left; padding:6px 6px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  th { color:var(--mute); font-weight:600; font-size:12px; }
+  td input { margin:0; }
+  button { padding:6px 12px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--ink); font:inherit; cursor:pointer; }
+  button.p { background:var(--acc); border-color:var(--acc); color:#fff; }
+  .note { font-size:12.5px; color:var(--mute); margin-top:8px; }
+  .res { font-size:28px; font-weight:700; }
+  .pill { display:inline-block; padding:2px 10px; border-radius:99px; font-weight:700; border:1px solid currentColor; }
+  .ok { color:var(--ok); } .warn { color:var(--warn); } .bad { color:var(--bad); }
+  .bar { height:10px; background:var(--line); border-radius:6px; overflow:hidden; margin-top:6px; }
+  .bar > i { display:block; height:100%; background:var(--acc); }
+  ul.w { margin:8px 0 0; padding-left:18px; font-size:13.5px; }
+  .src { font-size:12px; color:var(--mute); }
+  .scroll { overflow-x:auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Calcolo PL della funzione di emergenza</h1>
+  <p class="sub">PFH in unità di 10<sup>-9</sup>/h. Il PL è ricavato dalla somma dei PFH (ISO 13849-1, tab. 3). Ogni valore che non è un dato di catalogo va inserito da te dal certificato del componente.</p>
+
+  <section>
+    <h2>1. Attuatori: SINAMICS S120 Booksize (STO/SS1 via PROFIsafe)</h2>
+    <div class="grid">
+      <label>N° Control Unit<input type="number" id="nCU" min="0" value="12"></label>
+      <label>Motor Module doppi per CU<input type="number" id="nDMM" min="0" value="3"></label>
+      <label>Motor Module singoli per CU<input type="number" id="nSMM" min="0" value="0"></label>
+      <label>Altri blocchi per CU (es. monitoraggio senza encoder), PFH<input type="number" id="extraCU" min="0" value="0"></label>
+    </div>
+    <div style="margin-top:10px" class="grid">
+      <label class="chk"><input type="checkbox" id="sbc"> SBC (freno di sicurezza) su tutti gli assi</label>
+      <label>Come intervengono le CU
+        <select id="mode">
+          <option value="serie">Una sola funzione: tutte le CU in serie</option>
+          <option value="sep">Una funzione per CU (zone distinte)</option>
+        </select>
+      </label>
+    </div>
+    <p class="src" id="srcDrive"></p>
+    <p class="note">Valori da "Probability of failure Safety Integrated", Entry-ID 76254308 V2.1: CU320-2 PN 10; Motor Module singolo 10 (14 con SBC); doppio 2 assi usati 12 (20 con SBC); monitoraggio senza encoder Booksize 5. La CU si conta una volta, il modulo doppio una volta con i suoi due assi.</p>
+  </section>
+
+  <section>
+    <h2>2. Altri attuatori in serie (opzionale)</h2>
+    <div class="scroll"><table id="tblAct"><thead><tr><th>Descrizione</th><th>Quantità</th><th>PFH ciascuno</th><th></th></tr></thead><tbody></tbody></table></div>
+    <p style="margin:8px 0 0"><button id="addAct">Aggiungi attuatore</button></p>
+    <p class="note">Esempio: contattore comune a monte. Per componenti con B10d calcola prima il PFH del sottosistema.</p>
+  </section>
+
+  <section>
+    <h2>3. Elementi comuni a tutti i percorsi</h2>
+    <div class="grid">
+      <label>F-CPU S7-1500F, PFH<input type="number" id="pCPU" min="0" step="any" placeholder="da certificato"></label>
+      <label>Comunicazione PROFIsafe, PFH<input type="number" id="pBUS" min="0" step="any" placeholder="da specifica"></label>
+    </div>
+  </section>
+
+  <section>
+    <h2>4. Percorsi di rilevamento (iniziatori alternativi)</h2>
+    <div class="scroll"><table id="tblPath"><thead><tr><th>Percorso</th><th>Sensore / pulsante, PFH</th><th>Modulo d'ingresso (F-DI o pannello), PFH</th><th></th></tr></thead><tbody></tbody></table></div>
+    <p style="margin:8px 0 0"><button id="addPath">Aggiungi percorso</button></p>
+    <p class="note">Ogni pulsante è un percorso a sé: la funzione ha il PL del percorso peggiore. Per il pannello KTP900F puoi mettere il PFH complessivo nella colonna del sensore e 0 nell'altra.</p>
+  </section>
+
+  <section>
+    <h2>Risultato</h2>
+    <div id="out"></div>
+  </section>
+</main>
+
+<script id="calc">
+// ---- logica di calcolo (testabile senza interfaccia) ----
+const DB = {
+  CU320_2_PN: 10,
+  SMM: { base: 10, sbc: 14 },
+  DMM: { base: 12, sbc: 20 },
+};
+const PL_LIMITS = [ // PFH [1/h], limite superiore escluso
+  { pl: 'e', max: 1e-7, sil: 3 },
+  { pl: 'd', max: 1e-6, sil: 2 },
+  { pl: 'c', max: 3e-6, sil: 1 },
+  { pl: 'b', max: 1e-5, sil: 1 },
+  { pl: 'a', max: 1e-4, sil: 0 },
+];
+function toPL(pfh) {
+  for (const l of PL_LIMITS) if (pfh < l.max) return l;
+  return { pl: 'nessuno', max: Infinity, sil: 0 };
+}
+// PFH di una CU con i suoi Motor Module, in 1e-9/h
+function pfhPerCU(c) {
+  const k = c.sbc ? 'sbc' : 'base';
+  return DB.CU320_2_PN + c.nDMM * DB.DMM[k] + c.nSMM * DB.SMM[k] + (c.extraCU || 0);
+}
+// PFH del blocco attuatori S120 + altri attuatori, in 1e-9/h
+function pfhActuators(c) {
+  const perCU = pfhPerCU(c);
+  const drives = c.mode === 'serie' ? c.nCU * perCU : perCU;
+  const others = (c.others || []).reduce((s, o) => s + (o.qty || 0) * (o.pfh || 0), 0);
+  return { perCU, drives, others, total: drives + others };
+}
+function evaluate(c) {
+  const act = pfhActuators(c);
+  const common = (c.cpu || 0) + (c.bus || 0);
+  const paths = c.paths.map(p => {
+    const nano = (p.sensor || 0) + (p.input || 0) + common + act.total;
+    const pfh = nano * 1e-9;
+    const lvl = toPL(pfh);
+    return { name: p.name, nano, pfh, ...lvl };
+  });
+  const worst = paths.reduce((w, p) => (!w || p.nano > w.nano ? p : w), null);
+  return { act, common, paths, worst };
+}
+if (typeof module !== 'undefined') module.exports = { DB, pfhPerCU, pfhActuators, evaluate, toPL };
+</script>
+
+<script>
+// ---- interfaccia ----
+const $ = id => document.getElementById(id);
+const state = {
+  acts: [],
+  paths: [
+    { name: 'Fungo su F-DI', sensor: null, input: null },
+    { name: 'Pannello KTP900F', sensor: null, input: null },
+  ],
+};
+try { const s = JSON.parse(localStorage.getItem('calcolo-pl') || 'null'); if (s) Object.assign(state, s); } catch (e) {}
+
+function numOrNull(v) { return v === '' || v == null ? null : Number(v); }
+
+function renderRows() {
+  const ta = $('tblAct').querySelector('tbody');
+  ta.innerHTML = '';
+  state.acts.forEach((a, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><input type="text" value="${a.name || ''}" data-k="name"></td>
+      <td><input type="number" min="0" value="${a.qty ?? 1}" data-k="qty"></td>
+      <td><input type="number" min="0" step="any" value="${a.pfh ?? ''}" data-k="pfh"></td>
+      <td><button data-del="${i}">×</button></td>`;
+    tr.querySelectorAll('input').forEach(inp => inp.oninput = () => {
+      a[inp.dataset.k] = inp.dataset.k === 'name' ? inp.value : numOrNull(inp.value); calc(); });
+    tr.querySelector('button').onclick = () => { state.acts.splice(i, 1); renderRows(); calc(); };
+    ta.appendChild(tr);
+  });
+  const tp = $('tblPath').querySelector('tbody');
+  tp.innerHTML = '';
+  state.paths.forEach((p, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><input type="text" value="${p.name || ''}" data-k="name"></td>
+      <td><input type="number" min="0" step="any" value="${p.sensor ?? ''}" data-k="sensor" placeholder="da B10d/certificato"></td>
+      <td><input type="number" min="0" step="any" value="${p.input ?? ''}" data-k="input" placeholder="da certificato"></td>
+      <td><button data-del="${i}">×</button></td>`;
+    tr.querySelectorAll('input').forEach(inp => inp.oninput = () => {
+      p[inp.dataset.k] = inp.dataset.k === 'name' ? inp.value : numOrNull(inp.value); calc(); });
+    tr.querySelector('button').onclick = () => { state.paths.splice(i, 1); renderRows(); calc(); };
+    tp.appendChild(tr);
+  });
+}
+$('addAct').onclick = () => { state.acts.push({ name: 'Contattore comune', qty: 1, pfh: null }); renderRows(); calc(); };
+$('addPath').onclick = () => { state.paths.push({ name: 'Nuovo percorso', sensor: null, input: null }); renderRows(); calc(); };
+
+function fmt(n) { return n.toLocaleString('it-IT', { maximumFractionDigits: 2 }); }
+
+function calc() {
+  const c = {
+    nCU: +$('nCU').value || 0, nDMM: +$('nDMM').value || 0, nSMM: +$('nSMM').value || 0,
+    extraCU: +$('extraCU').value || 0, sbc: $('sbc').checked, mode: $('mode').value,
+    others: state.acts, cpu: numOrNull($('pCPU').value), bus: numOrNull($('pBUS').value), paths: state.paths,
+  };
+  try { localStorage.setItem('calcolo-pl', JSON.stringify(state)); } catch (e) {}
+  const r = evaluate(c);
+  const nAxes = c.nCU * (c.nDMM * 2 + c.nSMM);
+  $('srcDrive').textContent = `${c.nCU} CU, ${c.nCU * c.nDMM} Motor Module doppi, ${c.nCU * c.nSMM} singoli (${nAxes} assi). Per CU: ${fmt(r.act.perCU)}·10⁻⁹/h.`;
+
+  const warns = [];
+  if (c.cpu == null) warns.push('PFH della F-CPU non inserito: considerato 0.');
+  if (c.bus == null) warns.push('PFH di PROFIsafe non inserito: considerato 0.');
+  state.paths.forEach(p => { if (p.sensor == null || p.input == null) warns.push(`Percorso "${p.name}": sensore o modulo d'ingresso non inseriti (considerati 0).`); });
+  if (!state.paths.length) warns.push('Nessun percorso di rilevamento: il totale include solo gli attuatori.');
+  if (c.mode === 'sep') warns.push('Modo "una funzione per CU": vale solo se l\'arresto di ciascun gruppo elimina il pericolo di quella zona. Va documentato nell\'analisi dei rischi.');
+  warns.push('Il PL richiede anche categoria, DC, CCF e misure contro gli errori sistematici: il solo PFH non basta.');
+
+  const paths = r.paths.length ? r.paths : [{ name: '(solo attuatori)', nano: r.act.total + r.common, pfh: (r.act.total + r.common) * 1e-9, ...toPL((r.act.total + r.common) * 1e-9) }];
+  const worst = paths.reduce((w, p) => (!w || p.nano > w.nano ? p : w), null);
+  const used = worst.max === Infinity ? 100 : Math.min(100, worst.pfh / worst.max * 100);
+  const cls = worst.pl === 'e' ? 'ok' : worst.pl === 'd' ? 'ok' : worst.pl === 'c' ? 'warn' : 'bad';
+
+  $('out').innerHTML = `
+    <div class="res ${cls}">PL ${worst.pl} · SIL ${worst.sil} <span style="font-size:15px;font-weight:400;color:var(--mute)">(percorso peggiore: ${worst.name})</span></div>
+    <div>PFH totale peggiore: <b>${fmt(worst.nano)}·10⁻⁹/h</b> = ${worst.pfh.toExponential(2)}/h
+      · limite del livello: ${worst.max === Infinity ? '—' : worst.max.toExponential(0)}/h · usato ${fmt(used)} %</div>
+    <div class="bar"><i style="width:${used}%"></i></div>
+    <p style="margin:12px 0 4px"><b>Attuatori:</b> S120 ${fmt(r.act.drives)} + altri ${fmt(r.act.others)} = ${fmt(r.act.total)}·10⁻⁹/h
+      &nbsp;|&nbsp; <b>Comuni (F-CPU + PROFIsafe):</b> ${fmt(r.common)}·10⁻⁹/h</p>
+    <div class="scroll"><table><thead><tr><th>Percorso</th><th>PFH [10⁻⁹/h]</th><th>PL</th><th>SIL</th></tr></thead><tbody>
+      ${paths.map(p => `<tr><td>${p.name}</td><td>${fmt(p.nano)}</td><td>${p.pl}</td><td>${p.sil}</td></tr>`).join('')}
+    </tbody></table></div>
+    <ul class="w">${warns.map(w => `<li>${w}</li>`).join('')}</ul>`;
+}
+['nCU','nDMM','nSMM','extraCU','sbc','mode','pCPU','pBUS'].forEach(id => $(id).addEventListener('input', calc));
+renderRows(); calc();
+</script>
+</body>
+</html>

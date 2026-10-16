@@ -1,0 +1,8 @@
+{
+  "name": "cosmap-safety-evaluation",
+  "private": true,
+  "scripts": {
+    "test": "node --test calcolo-pl/test/regressione.test.js safety-eval/test/engine.test.js",
+    "build": "node safety-eval/build.js"
+  }
+}
