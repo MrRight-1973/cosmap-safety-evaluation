@@ -1,0 +1,28 @@
+# safety-eval
+
+Web app statica (HTML + JS, nessuna dipendenza, nessun server) che guida passo passo una safety evaluation secondo ISO 13849-1 partendo da un archivio articoli. Lingua: italiano. Deriva dal calcolatore in `../calcolo-pl/`. Test di tutto il repository: `npm test` dalla radice.
+
+## File
+- `index.html`: interfaccia, procedura guidata in 6 passi + archivio articoli. Stato salvato nel browser (localStorage), esportabile/importabile in JSON.
+- `engine.js`: motore di calcolo puro (UMD: `window.SafetyEngine` / `require`). Ogni costante cita la clausola della norma.
+- `articoli.js`: archivio di partenza. Solo valori con fonte; oggi i 7 articoli S120 da Entry-ID 76254308 V2.1, con `verificato: false` finché non si confrontano col PDF.
+- `build.js` → `safety-eval.html`: versione a file unico da consegnare (rigenerala dopo ogni modifica con `node build.js`).
+- `test/engine.test.js`: `node --test test/engine.test.js`. Include i 4 casi di riferimento S120 (552, 840, 46, 92).
+
+## Passi
+1. Progetto e funzioni: PLr dal grafo del rischio (all. A).
+2. Architettura: sottosistemi in serie con ruolo, metodo (PFH da certificato / architettura designata) e categoria. Un "percorso" non vuoto rende il sottosistema un iniziatore alternativo (OR); la funzione prende il percorso peggiore.
+3. Componenti: articoli dall'archivio, quantità; per l'architettura designata canale, DC e dati d'uso per B10d.
+4. Calcolo: MTTFd per canale (all. C, D.2, cap 100 anni, 2500 in cat. 4), DCavg (all. E), CCF (tab. F.1, ≥ 65), PFH da tab. K.1 inserito a mano.
+5. Verifica: PL = min(PL da somma PFH, PL dei sottosistemi) ≥ PLr; serve almeno un sottosistema per rilevamento, logica e attuazione.
+6. Report stampabile (PDF dal browser) con elenco fonti.
+
+## Regole
+- Nessun valore di catalogo o di tabella non verificato: la tab. K.1 NON è codificata (va inserita da una copia della norma), i campi mancanti restano vuoti e generano avvisi.
+- PFH in 10⁻⁹/h, MTTFd/T10d in anni.
+
+## Da fare
+- Tabella K.1 codificata (da copia della norma) per ricavare il PFH in automatico.
+- Archivio reale dell'utente (Excel/CSV) da importare; PFH di F-CPU, F-DI, KTP900F, PROFIsafe da certificato.
+- Controllo coerenza tra categoria e PFH; misure contro errori sistematici; export Excel.
+- Confronto risultati con SISTEMA / Safety Evaluation Tool.
