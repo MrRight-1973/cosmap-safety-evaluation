@@ -6,10 +6,11 @@ Web app statica (HTML + JS, nessuna dipendenza; con `npm start` il server locale
 - `index.html`: interfaccia, procedura guidata in 6 passi + archivio articoli. La valutazione resta nel browser (localStorage), esportabile/importabile in JSON. L'archivio articoli sta in `data/archivio-articoli.json` tramite `/api/articoli` di `../serve.js`; senza server, nel localStorage.
 - `archivio.js`: funzioni pure dell'archivio (unione degli import per id, riepilogo per costruttore, filtri). Un valore cambiato rimette l'articolo "da verificare".
 - `sistema.js`: lettore delle librerie SISTEMA `.slb` (database Firebird ODS 13) in puro JS, senza driver. Stesse regole di `../tools/slb2json.py`; verificato su Pizzato A26 contro Firebird 5 (206 articoli, 43 818 valori identici). Il file di prova non è nel repo (licenza).
+- `vdma.js`: lettore dei database VDMA 66413 (`.xml`), con parser XML minimo interno. Un articolo per use case; B10d = B10 / RDF e MTTFd = MTTF / RDF quando il database dà B10/MTTF + RDF (calcolo scritto nella fonte). Verificato su Siemens vdma.xml 1.29.0 (1730 articoli) contro ElementTree di Python.
 - `engine.js`: motore di calcolo puro (UMD: `window.SafetyEngine` / `require`). Ogni costante cita la clausola della norma.
 - `articoli.js`: archivio di partenza. Solo valori con fonte; oggi i 7 articoli S120 da Entry-ID 76254308 V2.1, con `verificato: false` finché non si confrontano col PDF.
 - `build.js` → `safety-eval.html`: versione a file unico (incorpora tutti gli script) da consegnare (rigenerala dopo ogni modifica con `node build.js`).
-- `test/`: `engine.test.js`, `archivio.test.js`, `sistema.test.js` (dati sintetici). engine.test.js include i 4 casi di riferimento S120 (552, 840, 46, 92).
+- `test/`: `engine.test.js`, `archivio.test.js`, `sistema.test.js`, `vdma.test.js` (dati sintetici). engine.test.js include i 4 casi di riferimento S120 (552, 840, 46, 92).
 
 ## Passi
 1. Progetto e funzioni: PLr dal grafo del rischio (all. A).
@@ -25,6 +26,6 @@ Web app statica (HTML + JS, nessuna dipendenza; con `npm start` il server locale
 
 ## Da fare
 - Tabella K.1 codificata (da copia della norma) per ricavare il PFH in automatico.
-- Archivio reale dell'utente (Excel/CSV) da importare; PFH di F-CPU, F-DI, KTP900F, PROFIsafe da certificato.
+- Archivio reale dell'utente (Excel/CSV) da importare. PFH di F-CPU, F-DI, KTP900F: presenti nel vdma.xml Siemens, da confrontare con i certificati.
 - Controllo coerenza tra categoria e PFH; misure contro errori sistematici; export Excel.
 - Confronto risultati con SISTEMA / Safety Evaluation Tool.

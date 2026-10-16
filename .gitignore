@@ -4,3 +4,4 @@ node_modules/
 librerie/
 __pycache__/
 data/
+vdma*.xml
