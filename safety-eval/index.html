@@ -40,6 +40,8 @@
   .spacer { flex:1; }
   .note { font-size:12.5px; color:var(--mute); margin:8px 0 0; }
   .pill { display:inline-block; padding:1px 10px; border-radius:99px; font-weight:700; border:1px solid currentColor; }
+  tr.sel td { background:var(--bg); }
+  details { margin:6px 0; font-size:13.5px; }
   .ok { color:var(--ok); } .warn { color:var(--warn); } .bad { color:var(--bad); } .mute { color:var(--mute); }
   ul.list { margin:6px 0 0; padding-left:18px; font-size:13.5px; }
   .scroll { overflow-x:auto; }
@@ -61,6 +63,8 @@
 
 <script src="engine.js"></script>
 <script src="articoli.js"></script>
+<script src="archivio.js"></script>
+<script src="sistema.js"></script>
 <script>
 'use strict';
 const E = window.SafetyEngine;
@@ -79,13 +83,45 @@ function defaultState() {
     step: 1, fSel: 0,
     progetto: { nome: '', macchina: '', autore: '', data: new Date().toISOString().slice(0, 10), missionTime: 20 },
     funzioni: [],
-    articoli: clone(window.ARTICOLI_DEFAULT || []),
   };
 }
 let S;
 try { S = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { S = null; }
 if (!S) S = defaultState();
-function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+function save() { try { const { articoli, ...rest } = S; localStorage.setItem(KEY, JSON.stringify(rest)); } catch (e) {} }
+
+// ---- archivio articoli: su file tramite il server locale (npm start), altrimenti nel browser ----
+const ARCH_KEY = 'safety-eval-articoli';
+let A = [];                       // archivio articoli
+const DB = { mode: 'browser', file: null, saved: '', error: null, timer: null };
+const UI = { testo: '', produttore: '', tipo: '', daVerificare: false, limite: 100, edit: null, importa: null };
+async function loadArchive() {
+  const vecchio = Array.isArray(S.articoli) ? S.articoli : null; // versioni precedenti: archivio dentro lo stato
+  delete S.articoli;
+  let arch = null;
+  try {
+    const r = await fetch('api/articoli', { cache: 'no-store' });
+    if (r.ok) { const d = await r.json(); DB.mode = 'server'; DB.file = d.file; arch = d.articoli; }
+  } catch (e) { /* aperto come file: niente server */ }
+  DB.saved = arch ? JSON.stringify(arch) : '';
+  // primo avvio col server: si parte da quanto già salvato nel browser
+  if (!arch) { try { arch = JSON.parse(localStorage.getItem(ARCH_KEY) || 'null'); } catch (e) {} }
+  if (!arch) arch = vecchio;
+  A = window.Archivio.conDefault(arch || [], window.ARTICOLI_DEFAULT || []);
+}
+function saveArchive() {
+  const text = JSON.stringify(A);
+  if (text === DB.saved) return;
+  if (DB.mode === 'browser') { try { localStorage.setItem(ARCH_KEY, text); DB.saved = text; } catch (e) { DB.error = 'Archivio troppo grande per il browser: avvia l\'app con npm start.'; } return; }
+  clearTimeout(DB.timer);
+  DB.timer = setTimeout(async () => {
+    try {
+      const r = await fetch('api/articoli', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: text });
+      if (!r.ok) throw new Error((await r.json()).errore || r.status);
+      DB.saved = text; if (DB.error) { DB.error = null; render(); }
+    } catch (e) { DB.error = 'Archivio non salvato sul disco: ' + e.message; render(); }
+  }, 400);
+}
 
 // ---- piccolo helper per costruire il DOM ----
 function h(tag, attrs, ...kids) {
@@ -124,9 +160,9 @@ const plPill = (pl, req) => {
   const cls = req ? (E.plAtLeast(pl, req) ? 'ok' : 'bad') : '';
   return h('span', { class: 'pill ' + cls }, 'PL ' + pl);
 };
-const art = id => S.articoli.find(a => a.id === id);
+const art = id => A.find(a => a.id === id);
 const fn = () => S.funzioni[S.fSel];
-const evalFn = f => E.evalFunction(f, S.articoli, S.progetto.missionTime);
+const evalFn = f => E.evalFunction(f, A, S.progetto.missionTime);
 
 function issues(errors, warns) {
   if (!errors.length && !warns.length) return null;
@@ -209,9 +245,20 @@ function step2() {
 }
 
 // ---- passo 3 ----
+function articleSelect(c) {
+  const groups = new Map();
+  for (const a of A.slice().sort((x, y) => `${x.produttore}${x.codice}`.localeCompare(`${y.produttore}${y.codice}`))) {
+    const k = a.produttore || '(senza produttore)';
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(a);
+  }
+  return h('select', { onchange: e => { c.articoloId = e.target.value || null; render(); } },
+    h('option', { value: '' }, '— scegli —'),
+    [...groups].map(([g, list]) => h('optgroup', { label: g }, list.map(a =>
+      h('option', { value: a.id, selected: a.id === c.articoloId }, `${a.codice} · ${a.descrizione || ''}${a.verificato ? '' : ' (da verificare)'}`)))));
+}
 function step3() {
   const f = fn();
-  const opts = [[null, '— scegli —'], ...S.articoli.map(a => [a.id, `${a.codice} · ${a.descrizione || ''}`])];
   return [
     h('h1', {}, '3. Componenti dall\'archivio'),
     h('p', { class: 'sub' }, 'Per ogni sottosistema scegli gli articoli. Se un articolo manca, aggiungilo in "Archivio articoli" con la sua fonte.'),
@@ -228,7 +275,7 @@ function step3() {
             const a = art(c.articoloId);
             const b10 = a && a.mttfd == null && a.b10d != null;
             return h('tr', {},
-              h('td', {}, field(null, () => c.articoloId, v => c.articoloId = v, { options: opts })),
+              h('td', {}, articleSelect(c)),
               h('td', {}, field(null, () => c.qty, v => c.qty = v ?? 1, { type: 'number', min: 1 })),
               arch ? [
                 h('td', {}, field(null, () => String(c.canale || 1), v => c.canale = Number(v), { options: [['1', '1'], ['2', '2']] })),
@@ -310,10 +357,10 @@ function step6() {
   return [
     h('div', { class: 'row noprint', style: 'margin-top:0;margin-bottom:12px' },
       h('button', { class: 'p', onclick: () => window.print() }, 'Stampa / salva PDF'),
-      h('button', { onclick: () => download(`${p.nome || 'safety-evaluation'}.json`, JSON.stringify(S, null, 2)) }, 'Esporta valutazione'),
-      h('button', { onclick: () => importFile(d => { if (!d.funzioni) throw new Error('manca "funzioni"'); S = Object.assign(defaultState(), d); }) }, 'Importa valutazione'),
+      h('button', { onclick: () => { const used = new Set(S.funzioni.flatMap(f => f.sottosistemi.flatMap(ss => ss.componenti.map(c => c.articoloId)))); download(`${p.nome || 'safety-evaluation'}.json`, JSON.stringify({ ...S, articoli: A.filter(a => used.has(a.id)) }, null, 2)); } }, 'Esporta valutazione'),
+      h('button', { onclick: () => importFile(d => { if (!d.funzioni) throw new Error('manca "funzioni"'); const { articoli, ...v } = d; if (Array.isArray(articoli)) A = window.Archivio.unisci(A, articoli).articoli; S = Object.assign(defaultState(), v); }) }, 'Importa valutazione'),
       h('span', { class: 'spacer' }),
-      h('button', { onclick: () => { if (confirm('Cancellare la valutazione corrente? L\'archivio articoli resta.')) { const a = S.articoli; S = defaultState(); S.articoli = a; render(); } } }, 'Nuova valutazione')),
+      h('button', { onclick: () => { if (confirm('Cancellare la valutazione corrente? L\'archivio articoli resta.')) { S = defaultState(); render(); } } }, 'Nuova valutazione')),
     h('h1', {}, p.nome || 'Safety evaluation'),
     h('div', { class: 'kv', style: 'margin-bottom:14px' },
       h('span', {}, 'Macchina'), h('span', {}, p.macchina || '—'), h('span', {}, 'Autore'), h('span', {}, p.autore || '—'),
@@ -326,7 +373,7 @@ function step6() {
     ]),
     h('section', {}, h('h2', {}, 'Componenti usati e fonti'), h('div', { class: 'scroll' }, h('table', {},
       h('thead', {}, h('tr', {}, h('th', {}, 'Articolo'), h('th', {}, 'PFH'), h('th', {}, 'B10d'), h('th', {}, 'MTTFd'), h('th', {}, 'Fonte'), h('th', {}, 'Verificato'))),
-      h('tbody', {}, S.articoli.filter(a => used.has(a.id)).map(a => h('tr', {},
+      h('tbody', {}, A.filter(a => used.has(a.id)).map(a => h('tr', {},
         h('td', {}, `${a.codice} · ${a.descrizione || ''}`), h('td', {}, fmt(a.pfh)), h('td', {}, fmt(a.b10d, 0)), h('td', {}, fmt(a.mttfd, 1)),
         h('td', { style: 'font-size:12px' }, `${a.fonte || 'SENZA FONTE'}${a.dataFonte ? ' (' + a.dataFonte + ')' : ''}`),
         h('td', { class: a.verificato ? 'ok' : 'warn' }, a.verificato ? 'sì' : 'no'))))))),
@@ -335,27 +382,98 @@ function step6() {
 }
 
 // ---- archivio ----
+const TIPI = [['sensore', 'sensore'], ['logica', 'logica'], ['attuatore', 'attuatore'], ['comunicazione', 'comunicazione']];
 const ART_COLS = [
-  ['codice', 'Codice'], ['descrizione', 'Descrizione'], ['produttore', 'Produttore'], ['tipo', 'Tipo', [['sensore', 'sensore'], ['logica', 'logica'], ['attuatore', 'attuatore'], ['comunicazione', 'comunicazione']]],
+  ['codice', 'Codice'], ['descrizione', 'Descrizione'], ['produttore', 'Produttore'], ['tipo', 'Tipo', TIPI],
   ['pfh', 'PFH [10⁻⁹/h]', 'number'], ['b10d', 'B10d [cicli]', 'number'], ['mttfd', 'MTTFd [anni]', 'number'],
   ['plMax', 'PL max', [[null, '—'], ['a', 'a'], ['b', 'b'], ['c', 'c'], ['d', 'd'], ['e', 'e']]],
   ['fonte', 'Fonte (documento, pagina)'], ['dataFonte', 'Data fonte'], ['note', 'Note'],
 ];
+function pickFile(accept, cb) {
+  h('input', { type: 'file', accept, onchange: async e => { const f = e.target.files[0]; if (f) await cb(f); } }).click();
+}
+function importSistema() {
+  pickFile('.slb', async f => {
+    try {
+      const r = window.Sistema.importa(new Uint8Array(await f.arrayBuffer()));
+      const u = window.Archivio.unisci(A, r.articoli);
+      UI.importa = { file: f.name, ...r, nuovi: u.nuovi, aggiornati: u.aggiornati, invariati: u.invariati, articoli_unione: u.articoli };
+    } catch (e) {
+      UI.importa = { file: f.name, errore: e instanceof window.Sistema.FormatError ? e.message : 'Lettura non riuscita: ' + e.message };
+    }
+    render();
+  });
+}
+function importPanel() {
+  const m = UI.importa;
+  if (!m) return null;
+  if (m.errore) return h('section', {}, h('h2', { class: 'bad' }, `${m.file}: non importato`), h('p', {}, m.errore),
+    h('button', { onclick: () => { UI.importa = null; render(); } }, 'Chiudi'));
+  const con = k => m.articoli.filter(a => a[k] != null).length;
+  return h('section', {},
+    h('h2', {}, `Libreria ${m.libreria}`),
+    h('p', {}, `${m.articoli.length} articoli letti: ${con('pfh')} con PFH, ${con('b10d')} con B10d, ${con('mttfd')} con MTTFd. `,
+      h('b', {}, `${m.nuovi} nuovi, ${m.aggiornati} aggiornati, ${m.invariati} già presenti.`)),
+    m.scartati.length ? h('details', {}, h('summary', {}, `${m.scartati.length} voci scartate`), h('ul', { class: 'list' }, m.scartati.map(([w, n]) => h('li', {}, `${n}: ${w}`)))) : null,
+    h('p', { class: 'note' }, 'Gli articoli entrano come "da verificare": confronta i valori con la documentazione del costruttore prima di usarli in un documento. Se un valore cambia rispetto all\'archivio, l\'articolo torna da verificare.'),
+    h('div', { class: 'row' },
+      h('button', { class: 'p', onclick: () => { A = m.articoli_unione; UI.importa = null; UI.produttore = m.articoli[0]?.produttore || ''; render(); } }, 'Aggiungi all\'archivio'),
+      h('button', { onclick: () => { UI.importa = null; render(); } }, 'Annulla')));
+}
+function editPanel() {
+  const a = A.find(x => x.id === UI.edit);
+  if (!a) return null;
+  return h('section', {},
+    h('div', { class: 'row', style: 'margin-top:0' }, h('h2', { style: 'margin:0' }, `Modifica ${a.codice}`), h('span', { class: 'spacer' }),
+      h('button', { onclick: () => { UI.edit = null; render(); } }, 'Chiudi')),
+    h('div', { class: 'grid', style: 'margin-top:10px' }, ART_COLS.map(([k, t, o]) =>
+      field(t, () => a[k], v => a[k] = v, Array.isArray(o) ? { options: o } : { type: o || 'text', step: 'any', min: 0 }))),
+    check('Verificato sul documento originale', () => a.verificato, v => a.verificato = v),
+    a.libreria ? h('p', { class: 'note' }, `Importato dalla libreria SISTEMA ${a.libreria}.`) : null);
+}
 function stepDb() {
+  const prod = window.Archivio.perProduttore(A);
+  const list = window.Archivio.filtra(A, UI).sort((x, y) => `${x.produttore}${x.codice}`.localeCompare(`${y.produttore}${y.codice}`));
+  const where = DB.mode === 'server'
+    ? h('span', { class: 'ok' }, `Archivio salvato sul PC in ${DB.file}`)
+    : h('span', { class: 'warn' }, 'Archivio salvato solo in questo browser: avvia l\'app con npm start per salvarlo in un file.');
   return [
     h('h1', {}, 'Archivio articoli'),
-    h('p', { class: 'sub' }, 'Ogni valore deve venire da un certificato o da un documento del costruttore: scrivi la fonte e spunta "verificato" solo dopo averlo confrontato con l\'originale. I campi vuoti non vengono mai riempiti con valori tipici.'),
+    h('p', { class: 'sub' }, 'Ogni valore deve venire da un certificato, da un documento o da una libreria del costruttore. Spunta "verificato" solo dopo averlo confrontato con l\'originale. I campi vuoti non vengono mai riempiti con valori tipici.'),
+    h('p', { style: 'margin:-8px 0 12px;font-size:13px' }, where, DB.error ? h('span', { class: 'bad' }, ' · ' + DB.error) : null),
     h('div', { class: 'row noprint', style: 'margin:0 0 12px' },
-      h('button', { class: 'p', onclick: () => { S.articoli.push({ id: uid(), codice: 'Nuovo articolo', tipo: 'sensore', pfh: null, b10d: null, mttfd: null, plMax: null, fonte: '', dataFonte: '', verificato: false, note: '' }); render(); } }, 'Aggiungi articolo'),
-      h('button', { onclick: () => download('archivio-articoli.json', JSON.stringify(S.articoli, null, 2)) }, 'Esporta archivio'),
-      h('button', { onclick: () => importFile(d => { if (!Array.isArray(d)) throw new Error('serve un elenco di articoli'); const ids = new Set(S.articoli.map(a => a.id)); d.forEach(a => { if (!a.id || ids.has(a.id)) a.id = uid(); }); S.articoli.push(...d); }) }, 'Importa archivio')),
-    h('section', {}, h('div', { class: 'scroll' }, h('table', {},
-      h('thead', {}, h('tr', {}, ART_COLS.map(c => h('th', {}, c[1])), h('th', {}, 'Verificato'), h('th', {}))),
-      h('tbody', {}, S.articoli.map((a, i) => h('tr', {},
-        ART_COLS.map(([k, , t]) => h('td', {}, field(null, () => a[k], v => a[k] = v,
-          Array.isArray(t) ? { options: t } : { type: t || 'text', step: 'any', min: 0 }))),
-        h('td', {}, h('input', { type: 'checkbox', checked: a.verificato, style: 'width:auto', onchange: e => { a.verificato = e.target.checked; render(); } })),
-        h('td', {}, h('button', { onclick: () => { if (confirm(`Eliminare ${a.codice}?`)) { S.articoli.splice(i, 1); render(); } } }, '×')))))))),
+      h('button', { class: 'p', onclick: importSistema }, 'Importa libreria SISTEMA (.slb)'),
+      h('button', { onclick: () => importFile(d => { if (!Array.isArray(d)) throw new Error('serve un elenco di articoli'); d.forEach(a => { a.id ||= uid(); }); A = window.Archivio.unisci(A, d).articoli; }) }, 'Importa JSON'),
+      h('button', { onclick: () => download('archivio-articoli.json', JSON.stringify(list, null, 2)) }, `Esporta ${list.length === A.length ? 'tutto' : 'i ' + list.length + ' filtrati'}`),
+      h('button', { onclick: () => { const a = { id: uid(), codice: 'Nuovo articolo', descrizione: '', produttore: UI.produttore || '', tipo: UI.tipo || 'sensore', pfh: null, b10d: null, mttfd: null, plMax: null, fonte: '', dataFonte: '', verificato: false, note: '' }; A.push(a); UI.edit = a.id; render(); } }, 'Aggiungi articolo')),
+    importPanel(),
+    h('section', {}, h('h2', {}, 'Costruttori'), h('div', { class: 'scroll' }, h('table', {},
+      h('thead', {}, h('tr', {}, ['Costruttore', 'Articoli', 'Per tipologia', 'Da verificare', 'Librerie', ''].map(t => h('th', {}, t)))),
+      h('tbody', {}, prod.map(r => h('tr', { class: UI.produttore === r.produttore ? 'sel' : '' },
+        h('td', {}, h('a', { href: '#', onclick: e => { e.preventDefault(); UI.produttore = UI.produttore === r.produttore ? '' : r.produttore; UI.limite = 100; render(); } }, r.produttore)),
+        h('td', {}, r.articoli),
+        h('td', { style: 'font-size:13px' }, Object.entries(r.tipi).map(([t, n]) => `${t} ${n}`).join(' · ')),
+        h('td', { class: r.daVerificare ? 'warn' : 'ok' }, r.daVerificare),
+        h('td', { style: 'font-size:12px' }, r.librerie.join(', ') || '—'),
+        h('td', {}, h('button', { onclick: () => { if (confirm(`Eliminare tutti i ${r.articoli} articoli di ${r.produttore}? Le valutazioni che li usano resteranno senza dati.`)) { A = A.filter(a => (a.produttore || '(senza produttore)') !== r.produttore); if (UI.produttore === r.produttore) UI.produttore = ''; render(); } } }, 'Elimina')))))))),
+    editPanel(),
+    h('section', {},
+      h('div', { class: 'grid' },
+        h('label', {}, 'Cerca', h('input', { type: 'search', value: UI.testo, placeholder: 'codice, descrizione, serie', oninput: e => { UI.testo = e.target.value; UI.limite = 100; clearTimeout(UI.t); UI.t = setTimeout(() => { render(); const i = document.querySelector('input[type=search]'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 250); } })),
+        field('Costruttore', () => UI.produttore, v => { UI.produttore = v || ''; UI.limite = 100; }, { options: [[null, 'tutti'], ...prod.map(r => [r.produttore, `${r.produttore} (${r.articoli})`])] }),
+        field('Tipologia', () => UI.tipo, v => { UI.tipo = v || ''; UI.limite = 100; }, { options: [[null, 'tutte'], ...TIPI] })),
+      check('Solo da verificare', () => UI.daVerificare, v => { UI.daVerificare = v; UI.limite = 100; }),
+      h('p', { class: 'note' }, `${list.length} articoli su ${A.length}.`),
+      h('div', { class: 'scroll' }, h('table', {},
+        h('thead', {}, h('tr', {}, ['Codice', 'Descrizione', 'Costruttore', 'Tipo', 'PFH', 'B10d', 'MTTFd', 'Verificato', ''].map(t => h('th', {}, t)))),
+        h('tbody', {}, list.slice(0, UI.limite).map(a => h('tr', {},
+          h('td', {}, a.codice), h('td', { style: 'font-size:13px' }, a.descrizione || ''), h('td', { style: 'font-size:13px' }, a.produttore || ''), h('td', {}, a.tipo || ''),
+          h('td', {}, fmt(a.pfh)), h('td', {}, fmt(a.b10d, 0)), h('td', {}, fmt(a.mttfd, 1)),
+          h('td', {}, h('input', { type: 'checkbox', checked: a.verificato, style: 'width:auto', title: a.fonte || 'senza fonte', onchange: e => { a.verificato = e.target.checked; render(); } })),
+          h('td', { style: 'white-space:nowrap' },
+            h('button', { onclick: () => { UI.edit = a.id; render(); window.scrollTo(0, 0); } }, 'Modifica'), ' ',
+            h('button', { onclick: () => { if (confirm(`Eliminare ${a.codice}?`)) { A = A.filter(x => x !== a); render(); } } }, '×'))))))),
+      list.length > UI.limite ? h('div', { class: 'row' }, h('button', { onclick: () => { UI.limite += 200; render(); } }, `Mostra altri (${list.length - UI.limite})`)) : null),
   ];
 }
 
@@ -368,6 +486,7 @@ function render() {
 }
 function draw() {
   save();
+  saveArchive();
   document.getElementById('nav').replaceChildren(...STEPS.map(([k, t]) =>
     h('button', { class: S.step === k ? 'on' : '', onclick: () => go(k) }, typeof k === 'number' ? `${k}. ${t}` : t)));
   const views = { 1: step1, 2: step2, 3: step3, 4: step4, 5: step5, 6: step6, db: stepDb };
@@ -375,7 +494,7 @@ function draw() {
   document.getElementById('app').replaceChildren(h('div', {}, (views[S.step] || step1)(), S.step !== 'db' ? navButtons() : null));
   window.scrollTo(0, y);
 }
-render();
+loadArchive().then(render, e => { DB.error = e.message; render(); });
 </script>
 </body>
 </html>

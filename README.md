@@ -13,25 +13,21 @@ Serve Node.js 18 o successivo. Dalla cartella del repository:
 npm start
 ```
 
-poi apri http://localhost:8080 nel browser. Per usare un'altra porta: `PORT=3000 npm start` (su Windows PowerShell: `$env:PORT=3000; npm start`). I dati della valutazione restano salvati nel browser: usa "Esporta valutazione" per tenerne una copia.
+poi apri http://localhost:8080 nel browser. Per usare un'altra porta: `PORT=3000 npm start` (su Windows PowerShell: `$env:PORT=3000; npm start`).
+
+L'archivio articoli viene salvato in `data/archivio-articoli.json` (con una copia della versione precedente in `archivio-articoli.bak.json`); per un'altra cartella: `DATA_DIR=...`. La cartella `data/` resta fuori dal repository. La valutazione in corso resta salvata nel browser: usa "Esporta valutazione" per tenerne una copia. Se apri la pagina senza `npm start`, anche l'archivio resta solo nel browser.
 
 ## Importare una libreria SISTEMA
 
-Le librerie SISTEMA dei costruttori (file `.slb`) si convertono nel formato dell'archivio con `tools/slb2json.py`. Il file `.slb` è un database Firebird: lo script ne legge una copia e non modifica l'originale.
+Nell'app: Archivio articoli → "Importa libreria SISTEMA (.slb)" e scegli il file del costruttore. Il file viene letto direttamente nel browser (`safety-eval/sistema.js`, nessun programma da installare) e non viene modificato. Prima di aggiungere gli articoli l'app mostra quanti sono nuovi, aggiornati o già presenti e quali voci ha scartato.
 
-Preparazione, una volta sola:
-1. Scarica Firebird 5 da https://github.com/FirebirdSQL/firebird/releases: su Windows il file `Firebird-5.x-windows-x64.zip`, su Linux il `.tar.gz`. Scompattalo in una cartella, per esempio `C:\Tools\firebird`, senza installarlo.
-2. Installa il driver Python: `pip install firebird-driver`.
+Ogni articolo entra come "da verificare", con la libreria (nome, versione e data) come fonte. I sottosistemi portano il PFH, gli elementi il B10d o l'MTTFd. Gli elementi il cui MTTFd SISTEMA lo ricava da altri dati (λ, MTTF, sotto-elementi) vengono scartati. Reimportando una versione nuova della stessa libreria, gli articoli con valori cambiati tornano "da verificare" e le note restano.
 
-Conversione:
+L'archivio si gestisce per costruttore (riepilogo con articoli, tipologie, da verificare, librerie importate; clic per filtrare, eliminazione di un costruttore intero) e si filtra per testo, tipologia e "solo da verificare". Nel passo 3 gli articoli sono raggruppati per costruttore.
 
-```
-python tools/slb2json.py "Pizzato_Elettrica_Sistema_en_A26 locked.slb" librerie/pizzato-A26.json --firebird C:\Tools\firebird
-```
+In alternativa resta lo script `tools/slb2json.py`, che usa Firebird 5 e `pip install firebird-driver` e produce un JSON da caricare con "Importa JSON".
 
-Poi nell'app apri Archivio articoli → Importa archivio e scegli il JSON. Ogni articolo entra come "non verificato", con la libreria (nome, versione e data) come fonte. I sottosistemi portano il PFH, gli elementi il B10d o l'MTTFd. Gli elementi il cui MTTFd SISTEMA lo ricava da altri dati (λ, MTTF, sotto-elementi) vengono scartati e l'elenco li segnala.
-
-Le librerie e i JSON ricavati restano fuori dal repository (`*.slb` e `librerie/` sono in `.gitignore`), perché i dati appartengono ai costruttori.
+Le librerie e i JSON ricavati restano fuori dal repository (`*.slb`, `librerie/` e `data/` sono in `.gitignore`), perché i dati appartengono ai costruttori.
 
 ## Test
 

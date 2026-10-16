@@ -1,13 +1,15 @@
 # safety-eval
 
-Web app statica (HTML + JS, nessuna dipendenza, nessun server) che guida passo passo una safety evaluation secondo ISO 13849-1 partendo da un archivio articoli. Lingua: italiano. Deriva dal calcolatore in `../calcolo-pl/`. Test di tutto il repository: `npm test` dalla radice.
+Web app statica (HTML + JS, nessuna dipendenza; con `npm start` il server locale salva l'archivio su file) che guida passo passo una safety evaluation secondo ISO 13849-1 partendo da un archivio articoli. Lingua: italiano. Deriva dal calcolatore in `../calcolo-pl/`. Test di tutto il repository: `npm test` dalla radice.
 
 ## File
-- `index.html`: interfaccia, procedura guidata in 6 passi + archivio articoli. Stato salvato nel browser (localStorage), esportabile/importabile in JSON.
+- `index.html`: interfaccia, procedura guidata in 6 passi + archivio articoli. La valutazione resta nel browser (localStorage), esportabile/importabile in JSON. L'archivio articoli sta in `data/archivio-articoli.json` tramite `/api/articoli` di `../serve.js`; senza server, nel localStorage.
+- `archivio.js`: funzioni pure dell'archivio (unione degli import per id, riepilogo per costruttore, filtri). Un valore cambiato rimette l'articolo "da verificare".
+- `sistema.js`: lettore delle librerie SISTEMA `.slb` (database Firebird ODS 13) in puro JS, senza driver. Stesse regole di `../tools/slb2json.py`; verificato su Pizzato A26 contro Firebird 5 (206 articoli, 43 818 valori identici). Il file di prova non è nel repo (licenza).
 - `engine.js`: motore di calcolo puro (UMD: `window.SafetyEngine` / `require`). Ogni costante cita la clausola della norma.
 - `articoli.js`: archivio di partenza. Solo valori con fonte; oggi i 7 articoli S120 da Entry-ID 76254308 V2.1, con `verificato: false` finché non si confrontano col PDF.
-- `build.js` → `safety-eval.html`: versione a file unico da consegnare (rigenerala dopo ogni modifica con `node build.js`).
-- `test/engine.test.js`: `node --test test/engine.test.js`. Include i 4 casi di riferimento S120 (552, 840, 46, 92).
+- `build.js` → `safety-eval.html`: versione a file unico (incorpora tutti gli script) da consegnare (rigenerala dopo ogni modifica con `node build.js`).
+- `test/`: `engine.test.js`, `archivio.test.js`, `sistema.test.js` (dati sintetici). engine.test.js include i 4 casi di riferimento S120 (552, 840, 46, 92).
 
 ## Passi
 1. Progetto e funzioni: PLr dal grafo del rischio (all. A).
