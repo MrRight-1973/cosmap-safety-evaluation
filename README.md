@@ -2,7 +2,7 @@
 
 Strumenti per la safety evaluation delle funzioni di sicurezza secondo ISO 13849-1 (PL) e IEC 62061 (SIL). Nessuna dipendenza: HTML e JavaScript che girano nel browser, anche offline.
 
-- `safety-eval/`: web app che guida passo passo la valutazione partendo da un archivio articoli. Si apre `safety-eval/index.html`, oppure `npm run build` crea `safety-eval/safety-eval.html` a file unico. Dettagli in `safety-eval/CLAUDE.md`.
+- `safety-eval/`: web app che guida passo passo la valutazione partendo da un archivio articoli; l'architettura di ogni funzione si costruisce come schema a blocchi, con i percorsi alternativi (per esempio funghi su F-DI oppure fungo sul pannello PROFIsafe) su righe diverse. Si apre `safety-eval/index.html`, oppure `npm run build` crea `safety-eval/safety-eval.html` a file unico. Dettagli in `safety-eval/CLAUDE.md`.
 - `calcolo-pl/`: primo calcolatore del PFH per la funzione di emergenza con SINAMICS S120 in PROFIsafe. Dettagli in `calcolo-pl/CLAUDE.md`.
 
 ## Avvio in localhost
