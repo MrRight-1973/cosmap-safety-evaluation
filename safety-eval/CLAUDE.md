@@ -24,7 +24,7 @@ Web app statica (HTML + JS, nessuna dipendenza; con `npm start` il server locale
 
 ## Regole
 - Nessun valore di catalogo o di tabella non verificato: la tab. K.1 NON è codificata (va inserita da una copia della norma), i campi mancanti restano vuoti e generano avvisi.
-- PFH in 10⁻⁹/h, MTTFd/T10d in anni.
+- PFH in 10⁻⁹/h, MTTFd/T10d in anni. I campi numerici sono di testo (`num()`): accettano la virgola decimale e la notazione E; un PFH sotto 0,001 è letto come 1/h e convertito (es. 4,29E-08 → 42,9). Niente `type=number`: il browser scartava la virgola (4,29 → 429).
 
 ## Da fare
 - Tabella K.1 codificata (da copia della norma) per ricavare il PFH in automatico.
