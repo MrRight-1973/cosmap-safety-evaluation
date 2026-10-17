@@ -38,3 +38,15 @@ test('esiti per chiave, prove aggiunte e riepilogo', () => {
 test('nessuna prova senza funzione = non validata', () => {
   assert.equal(V.riepilogo([]).completa, false);
 });
+
+test('verifiche elettriche: prove del cap. 18 con clausola, punti aggiunti e valori misurati', () => {
+  assert.deepEqual(V.PROVE_ELETTRICHE.map(p => p.clausola), ['18.2.2', '18.2.3', '18.3', '18.4', '18.5', '18.6']);
+  const el = { esiti: { isolamento: { misurato: '250', esito: 'ok' }, 'extra:q2': { misurato: '0,08' } },
+    extra: [{ id: 'q2', testo: 'Continuità PE motore M2', criterio: 'continuità', unita: 'Ω' }] };
+  const lista = V.proveElettriche(el);
+  assert.equal(lista.length, 7);
+  assert.equal(lista.find(p => p.key === 'isolamento').misurato, '250');
+  assert.equal(lista[6].testo, 'Continuità PE motore M2');
+  assert.equal(lista[6].misurato, '0,08');
+  assert.equal(V.proveElettriche(undefined).length, 6);
+});
