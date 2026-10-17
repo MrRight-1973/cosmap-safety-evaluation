@@ -61,6 +61,57 @@
       .map(p => ({ ...p, ...(esiti[p.key] || {}) }));
   }
 
+  // Registro delle misure sul campo (come il foglio misure dei tecnici): collegamenti equipotenziali
+  // per la 18.2.2 e un cavo per riga per 18.2.2 (RPE), 18.2.3 (Zs) e 18.3 (isolamento). Valori come testo
+  // ("0,004", ">1", "<0,1"), così resta quello che il tecnico ha scritto.
+  const COLONNE_EQUI = [['punto', 'Collegamento (da/a)'], ['conduttore', 'Conduttore'], ['sezione', 'Sezione [mm²]'], ['rpe', 'R [Ω]'], ['note', 'Note']];
+  const ISO = [['l1pe', 'L1-PE'], ['l2pe', 'L2-PE'], ['l3pe', 'L3-PE'], ['l1l2', 'L1-L2'], ['l1l3', 'L1-L3'], ['l2l3', 'L2-L3']];
+  const COLONNE_CAVI = [['sigla', 'Sigla'], ['percorso', 'Da/a'], ['tipo', 'Tipo cavo'], ['formazione', 'Formazione'], ['sezione', 'Sez. [mm²]'],
+    ['protezione', 'Protezione'], ['in', 'In [A]'], ['zs', 'Zs [Ω]'], ...ISO, ['rpe', 'RPE [Ω]'], ['note', 'Note']];
+  const MISURE_CAVI = ['zs', ...ISO.map(c => c[0]), 'rpe']; // le colonne che compila il tecnico
+  const ISO_MIN = 1; // MΩ, 18.3 (vedi criterio della prova)
+
+  // "0,004" → { op: '', v: 0.004 }, ">1" → { op: '>', v: 1 }; vuoto → null; testo non numerico → { v: NaN }
+  function leggiMisura(t) {
+    const m = String(t ?? '').trim().replace(/\s+/g, '').match(/^([<>≤≥]?)=?(.*)$/);
+    if (!m[2]) return null;
+    const n = m[2].replace(',', '.');
+    return { op: m[1].replace('≤', '<').replace('≥', '>'), v: /^(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(n) ? Number(n) : NaN };
+  }
+
+  // Esito dell'isolamento di un cavo: 'ok' se ogni valore scritto è ≥ 1 MΩ, 'ko' se uno è sotto, '' se mancano
+  function esitoIsolamento(cavo) {
+    const mis = ISO.map(([k]) => leggiMisura(cavo[k])).filter(Boolean);
+    if (!mis.length) return '';
+    return mis.every(m => !isNaN(m.v) && m.op !== '<' && m.v >= ISO_MIN) ? 'ok' : 'ko';
+  }
+
+  const peggiore = (valori, alto) => valori.filter(m => m && !isNaN(m.v))
+    .reduce((p, m) => (!p || (alto ? m.v > p.v : m.v < p.v) ? m : p), null);
+  const testo = m => (m ? m.op + String(m.v).replace('.', ',') : null);
+
+  // Riepilogo del registro per le righe 18.2.2, 18.2.3 e 18.3 del report
+  function riepilogoRegistro(el) {
+    const equi = (el && el.equipotenziali) || [];
+    const cavi = (el && el.cavi) || [];
+    const misurato = c => MISURE_CAVI.some(k => leggiMisura(c[k]));
+    return {
+      equipotenziali: equi.length, cavi: cavi.length,
+      rpeMax: testo(peggiore([...equi, ...cavi].map(r => leggiMisura(r.rpe)), true)),
+      zsMax: testo(peggiore(cavi.map(c => leggiMisura(c.zs)), true)),
+      isoMin: testo(peggiore(cavi.flatMap(c => ISO.map(([k]) => leggiMisura(c[k]))), false)),
+      isoKo: cavi.filter(c => esitoIsolamento(c) === 'ko').map(c => c.sigla || '?'),
+      senzaMisure: cavi.filter(c => !misurato(c)).length + equi.filter(r => !leggiMisura(r.rpe)).length,
+    };
+  }
+
+  // Righe incollate da Excel/Calc (tabulazioni o punto e virgola) nell'ordine delle colonne; salta l'intestazione
+  function daTesto(txt, colonne) {
+    return String(txt || '').split(/\r?\n/).map(r => r.split(r.includes('\t') ? '\t' : ';').map(x => x.trim()))
+      .filter(c => c.some(Boolean) && !(c[0] || '').toLowerCase().startsWith(colonne[0][1].toLowerCase().slice(0, 5)))
+      .map(c => Object.fromEntries(colonne.map(([k], i) => [k, c[i] || ''])));
+  }
+
   const ESITI = [['', '—'], ['ok', 'OK'], ['ko', 'Non OK'], ['na', 'Non applicabile']];
 
   const elenco = nomi => nomi.filter(Boolean).join(', ') || '—';
@@ -111,5 +162,6 @@
     return r;
   }
 
-  return { MISURE_SISTEMATICHE, ESITI, FONTE_ELETTRICHE, PROVE_ELETTRICHE, proveAuto, prove, proveElettriche, riepilogo };
+  return { MISURE_SISTEMATICHE, ESITI, FONTE_ELETTRICHE, PROVE_ELETTRICHE, COLONNE_EQUI, COLONNE_CAVI, ISO, MISURE_CAVI, ISO_MIN,
+    proveAuto, prove, proveElettriche, riepilogo, leggiMisura, esitoIsolamento, riepilogoRegistro, daTesto };
 });

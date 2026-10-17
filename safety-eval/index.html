@@ -26,6 +26,19 @@
   section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:14px; }
   .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px 14px; }
   label { display:block; font-size:13px; color:var(--mute); }
+  input.ko { background:color-mix(in srgb, var(--bad, #c62828) 14%, transparent); }
+  table.reg td { padding:3px 3px; }
+  table.reg input { padding:4px 5px; font-size:13px; }
+  table.reg th { font-size:11.5px; white-space:nowrap; }
+  .reg-doc { font-size:11px; }
+  .doc-sub { margin:8px 0 4px; break-after:avoid; }
+  .reg-doc td, .reg-doc th { padding:3px 4px !important; }
+  .modulo-dati { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px 18px; margin:10px 0; font-size:13px; }
+  .modulo-tab { width:100%; border-collapse:collapse; font-size:11px; }
+  .modulo-tab th, .modulo-tab td { border:1px solid #444; padding:2px 4px; height:20px; text-align:left; }
+  .modulo-tab th { background:#eee; color:#000; }
+  .modulo h3 { margin:12px 0 4px; font-size:13px; }
+  .modulo-fine, .modulo-tab tr { break-inside:avoid; }
   input.invalido { border-color:var(--bad, #c62828); outline:2px solid var(--bad, #c62828); }
   input, select, textarea { width:100%; padding:6px 8px; margin-top:3px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); font:inherit; }
   textarea { min-height:56px; resize:vertical; }
@@ -675,6 +688,12 @@ function stepVal() {
   ];
 }
 const elettriche = () => (S.elettriche = S.elettriche || { esiti: {}, extra: [] });
+// Valore delle righe 18.2.2, 18.2.3 e 18.3 ricavato dal registro misure, se il campo è vuoto
+function dalRegistro(el, key) {
+  const r = V.riepilogoRegistro(el);
+  const v = { continuita: r.rpeMax && `max ${r.rpeMax}`, anello: r.zsMax && `max ${r.zsMax}`, isolamento: r.isoMin && `min ${r.isoMin}` }[key];
+  return v ? v + ' (registro)' : '';
+}
 function elettricheUI() {
   const el = elettriche();
   const lista = V.proveElettriche(el);
@@ -687,6 +706,7 @@ function elettricheUI() {
       field('Tensione nominale di alimentazione', () => el.tensione, x => el.tensione = x, { placeholder: 'es. 400 V 50 Hz TN-S' }),
       field('Strumento (modello, matricola)', () => el.strumento, x => el.strumento = x),
       field('Scadenza taratura strumento', () => el.taratura, x => el.taratura = x, { type: 'date' }),
+      field('Tensione di prova isolamento', () => el.vprova, x => el.vprova = x, { placeholder: 'es. 500 V c.c.' }),
       field('Eseguite da', () => el.esecutore, x => el.esecutore = x),
       field('Data', () => el.data, x => el.data = x, { type: 'date' })),
     h('div', { class: 'scroll', style: 'margin-top:10px' }, h('table', { class: 'val' },
@@ -695,12 +715,105 @@ function elettricheUI() {
         h('td', {}, p.clausola || ''),
         h('td', {}, p.extra ? field(null, () => p.extra.testo, x => p.extra.testo = x) : p.testo),
         h('td', {}, p.extra ? field(null, () => p.extra.criterio, x => p.extra.criterio = x) : p.criterio),
-        h('td', { style: 'white-space:nowrap' }, h('input', { value: p.misurato || '', style: 'width:90px', onchange: e => { esito(p.key).misurato = e.target.value; render(); } }), ' ',
+        h('td', { style: 'white-space:nowrap' }, h('input', { value: p.misurato || '', placeholder: dalRegistro(el, p.key), style: 'width:120px', onchange: e => { esito(p.key).misurato = e.target.value; render(); } }), ' ',
           p.extra ? h('input', { value: p.extra.unita || '', placeholder: 'unità', style: 'width:52px', onchange: e => { p.extra.unita = e.target.value; render(); } }) : p.unita),
         h('td', {}, selEsito(() => p.esito, x => esito(p.key).esito = x)),
         h('td', {}, field(null, () => p.note, x => esito(p.key).note = x)),
         h('td', {}, p.extra ? h('button', { title: 'Elimina la prova', onclick: () => { el.extra = el.extra.filter(x => x !== p.extra); delete el.esiti[p.key]; render(); } }, '×') : null)))))),
-    h('div', { class: 'row' }, h('button', { onclick: () => { el.extra.push({ id: uid(), testo: '', criterio: '', unita: '' }); render(); } }, '+ prova')));
+    h('div', { class: 'row' }, h('button', { onclick: () => { el.extra.push({ id: uid(), testo: '', criterio: '', unita: '' }); render(); } }, '+ prova')),
+    registroUI(el));
+}
+// ---- registro misure sul campo: collegamenti equipotenziali e cavi ----
+function cella(riga, k, opt = {}) {
+  const m = V.MISURE_CAVI.includes(k) || k === 'rpe' ? V.leggiMisura(riga[k]) : null;
+  const iso = V.ISO.some(([c]) => c === k);
+  const ko = iso && m && (isNaN(m.v) || m.op === '<' || m.v < V.ISO_MIN);
+  return h('input', { value: riga[k] || '', class: (m && isNaN(m.v) ? 'invalido' : '') + (ko ? ' ko' : ''), style: `width:${opt.w || 50}px`,
+    title: ko ? `Isolamento sotto ${V.ISO_MIN} MΩ` : m && isNaN(m.v) ? 'Valore non numerico (ammessi anche > e <, es. >1)' : '',
+    onchange: e => { riga[k] = e.target.value.trim(); render(); } });
+}
+const LARGHEZZE = { sigla: 70, percorso: 90, tipo: 84, formazione: 76, protezione: 70, sezione: 48, in: 44, note: 110, punto: 180, conduttore: 100 };
+function tabellaRegistro(el, chiave, colonne, nuovo) {
+  const righe = el[chiave] = el[chiave] || [];
+  return [
+    h('div', { class: 'scroll' }, h('table', { class: 'val reg' },
+      h('thead', {}, h('tr', {}, h('th', {}, 'N.'), colonne.map(([, t]) => h('th', {}, t)), chiave === 'cavi' ? h('th', {}, 'Isol.') : null, h('th', {}))),
+      h('tbody', {}, righe.map((r, i) => h('tr', {},
+        h('td', {}, i + 1),
+        colonne.map(([k]) => h('td', {}, cella(r, k, { w: LARGHEZZE[k] }))),
+        chiave === 'cavi' ? h('td', { class: { ok: 'ok', ko: 'bad' }[V.esitoIsolamento(r)] || 'mute' }, { ok: 'OK', ko: 'Non OK' }[V.esitoIsolamento(r)] || '—') : null,
+        h('td', { style: 'white-space:nowrap' },
+          h('button', { title: 'Duplica la riga (senza i valori misurati)', onclick: () => {
+            const c = { ...r, id: uid() }; V.MISURE_CAVI.concat('rpe', 'note').forEach(k => { delete c[k]; }); righe.splice(i + 1, 0, c); render(); } }, '⧉'), ' ',
+          h('button', { title: 'Elimina la riga', onclick: () => { righe.splice(i, 1); render(); } }, '×'))))))),
+    h('div', { class: 'row' },
+      h('button', { onclick: () => { righe.push(nuovo()); render(); } }, chiave === 'cavi' ? '+ cavo' : '+ collegamento'),
+      h('button', { onclick: () => { UI.incolla = UI.incolla === chiave ? null : chiave; render(); } }, 'Incolla da Excel / Calc'),
+      righe.length ? h('button', { onclick: () => { if (confirm(`Svuotare la tabella (${righe.length} righe)?`)) { el[chiave] = []; render(); } } }, 'Svuota') : null),
+    UI.incolla === chiave ? h('div', { style: 'margin-top:8px' },
+      h('p', { class: 'note', style: 'margin:0 0 4px' }, `Copia le righe dal foglio di calcolo e incollale qui, con le colonne in questo ordine: ${colonne.map(c => c[1]).join(' · ')}. Le righe si aggiungono a quelle già presenti.`),
+      h('textarea', { id: 'incolla', rows: 6, placeholder: 'incolla qui…' }),
+      h('div', { class: 'row' }, h('button', { class: 'p', onclick: () => {
+        const nuove = V.daTesto(document.getElementById('incolla').value, colonne).map(r => ({ id: uid(), ...r }));
+        righe.push(...nuove); UI.incolla = null; render(); } }, 'Aggiungi le righe'))) : null,
+  ];
+}
+function registroUI(el) {
+  const r = V.riepilogoRegistro(el);
+  return h('div', { style: 'margin-top:22px' },
+    h('div', { class: 'row', style: 'margin-top:0' }, h('h2', { style: 'margin:0' }, 'Registro misure sul campo'), h('span', { class: 'spacer' }),
+      r.isoKo.length ? h('span', { class: 'pill bad' }, `isolamento non OK: ${r.isoKo.join(', ')}`) : null,
+      r.senzaMisure ? h('span', { class: 'pill mute' }, `${r.senzaMisure} righe da misurare`) : null),
+    h('p', { class: 'note' }, 'Elenca i collegamenti di protezione e i cavi della macchina, stampa il modulo per i tecnici e riporta qui i valori misurati. Si accettano anche valori come >1 o <0,1. I valori peggiori compaiono nelle righe 18.2.2, 18.2.3 e 18.3 se lì non scrivi niente.'),
+    h('div', { class: 'row noprint' }, h('button', { class: 'p', onclick: stampaModulo }, 'Stampa modulo per i tecnici')),
+    h('h3', {}, 'Collegamenti equipotenziali (18.2.2)'),
+    tabellaRegistro(el, 'equipotenziali', V.COLONNE_EQUI, () => ({ id: uid() })),
+    h('h3', {}, 'Cavi: continuità PE (18.2.2), anello di guasto (18.2.3), isolamento [MΩ] (18.3)'),
+    tabellaRegistro(el, 'cavi', V.COLONNE_CAVI, () => ({ id: uid() })));
+}
+// Modulo da stampare per i tecnici: dati della macchina e righe del registro con i valori da compilare a mano
+function stampaModulo() {
+  UI.modulo = true; render();
+  const fine = () => { UI.modulo = false; window.removeEventListener('afterprint', fine); render(); };
+  window.addEventListener('afterprint', fine);
+  setTimeout(() => window.print(), 50);
+}
+function moduloTecnici() {
+  const el = elettriche();
+  const p = S.progetto;
+  const vuote = (n, k) => Array.from({ length: n }, () => h('tr', {}, h('td', {}), Array.from({ length: k }, () => h('td', {}))));
+  const riga = (i, r, colonne) => h('tr', {}, h('td', {}, i + 1), colonne.map(([k]) => h('td', {}, V.MISURE_CAVI.includes(k) || k === 'rpe' || k === 'note' ? '' : r[k] || '')));
+  const dato = (k, v) => h('div', {}, h('span', { class: 'mute' }, k + ': '), v || '______________________');
+  return h('div', { class: 'modulo' },
+    h('style', {}, '@page { size: A4 landscape; margin: 10mm; }'),
+    h('div', { class: 'doc-testa' }, h('div', {}, h('div', { class: 'doc-tipo' }, 'Modulo rilievi: verifiche elettriche IEC 60204-1, cap. 18'), h('h1', { style: 'margin:2px 0 0' }, p.nome || 'Macchina')),
+      h('div', { class: 'doc-num' }, p.documento ? h('b', {}, p.documento) : null, h('div', {}, 'Data prova: ____________'))),
+    h('div', { class: 'modulo-dati' },
+      dato('Macchina / impianto', p.macchina), dato('Equipaggiamento / quadro', el.quadro), dato('Tensione nominale', el.tensione),
+      dato('Tensione di prova isolamento', el.vprova), dato('Strumento (modello, matricola)', el.strumento), dato('Scadenza taratura', el.taratura)),
+    h('h3', {}, 'Collegamenti equipotenziali (18.2.2): R in Ω'),
+    h('table', { class: 'modulo-tab' }, h('thead', {}, h('tr', {}, h('th', {}, 'N.'), V.COLONNE_EQUI.map(([, t]) => h('th', {}, t)))),
+      h('tbody', {}, (el.equipotenziali || []).map((r, i) => riga(i, r, V.COLONNE_EQUI)), vuote(4, V.COLONNE_EQUI.length))),
+    h('h3', {}, 'Cavi: RPE e Zs in Ω, isolamento in MΩ'),
+    h('table', { class: 'modulo-tab' }, h('thead', {}, h('tr', {}, h('th', {}, 'N.'), V.COLONNE_CAVI.map(([, t]) => h('th', {}, t)))),
+      h('tbody', {}, (el.cavi || []).map((r, i) => riga(i, r, V.COLONNE_CAVI)), vuote(8, V.COLONNE_CAVI.length))),
+    h('div', { class: 'modulo-fine' }, h('h3', {}, 'Altre prove'),
+    h('table', { class: 'modulo-tab' }, h('thead', {}, h('tr', {}, ['Rif.', 'Prova', 'Valore', 'Esito', 'Note'].map(t => h('th', {}, t)))),
+      h('tbody', {}, V.PROVE_ELETTRICHE.filter(x => ['tensione', 'residue'].includes(x.key)).map(x => h('tr', {}, h('td', {}, x.clausola), h('td', {}, x.testo), h('td', {}), h('td', {}), h('td', {}))))),
+    h('p', { style: 'margin-top:14px' }, 'Tecnico: ______________________________ · Firma: ______________________________')));
+}
+function registroReport(el) {
+  const equi = el.equipotenziali || [], cavi = el.cavi || [];
+  if (!equi.length && !cavi.length) return null;
+  const tab = (righe, colonne, iso) => h('table', { class: 'doc-tab reg-doc' },
+    h('thead', {}, h('tr', {}, h('th', {}, 'N.'), colonne.map(([, t]) => h('th', {}, t)), iso ? h('th', {}, 'Isol.') : null)),
+    h('tbody', {}, righe.map((r, i) => h('tr', {}, h('td', {}, i + 1), colonne.map(([k]) => h('td', {}, r[k] || '')),
+      iso ? h('td', { class: { ok: 'ok', ko: 'bad' }[V.esitoIsolamento(r)] || '' }, { ok: 'OK', ko: 'Non OK' }[V.esitoIsolamento(r)] || '') : null))));
+  return h('div', {},
+    h('h3', {}, 'Registro misure'),
+    el.vprova ? h('p', { style: 'margin:0 0 6px' }, `Tensione di prova isolamento: ${el.vprova.replace(/\.$/, '')}. Isolamento in MΩ, RPE e Zs in Ω.`) : null,
+    equi.length ? [h('p', { class: 'doc-sub' }, h('b', {}, 'Collegamenti equipotenziali (18.2.2)')), tab(equi, V.COLONNE_EQUI)] : null,
+    cavi.length ? [h('p', { class: 'doc-sub' }, h('b', {}, 'Cavi (18.2.2, 18.2.3, 18.3)')), tab(cavi, V.COLONNE_CAVI, true)] : null);
 }
 function elettricheReport() {
   const el = S.elettriche || {};
@@ -711,12 +824,13 @@ function elettricheReport() {
     h('p', {}, `${V.FONTE_ELETTRICHE}.`),
     h('div', { class: 'kv doc-dati' },
       dato('Equipaggiamento / quadro', el.quadro), dato('Tensione nominale', el.tensione),
-      dato('Strumento', el.strumento), dato('Scadenza taratura', el.taratura)),
+      dato('Strumento', el.strumento), dato('Scadenza taratura', el.taratura), dato('Tensione di prova isolamento', el.vprova)),
     h('table', { class: 'doc-tab val' },
       h('thead', {}, h('tr', {}, h('th', {}, 'Rif.'), h('th', {}, 'Prova'), h('th', {}, 'Criterio'), h('th', {}, 'Misurato'), h('th', {}, 'Esito'), h('th', {}, 'Note'))),
       h('tbody', {}, lista.map(p => h('tr', {}, h('td', {}, p.clausola || ''), h('td', {}, p.testo || '—'), h('td', {}, p.criterio || ''),
-        h('td', { style: 'white-space:nowrap' }, p.misurato ? `${p.misurato} ${p.unita || ''}` : ''),
+        h('td', { style: 'white-space:nowrap' }, p.misurato ? `${p.misurato} ${p.unita || ''}` : dalRegistro(el, p.key) ? `${dalRegistro(el, p.key).replace(' (registro)', '')} ${p.unita}` : ''),
         h('td', { class: p.esito === 'ok' ? 'ok' : p.esito === 'ko' ? 'bad' : '' }, p.esito ? ESITO_TXT[p.esito] : ''), h('td', {}, p.note || ''))))),
+    registroReport(el),
     h('p', { style: 'margin-top:10px' }, `Eseguite da: ${el.esecutore || '__________________'} · Data: ${el.data || '__________'} · Firma: ______________________`));
 }
 function valReport(f, n) {
@@ -954,7 +1068,7 @@ function draw() {
     h('button', { class: S.step === k ? 'on' : '', onclick: () => go(k) }, typeof k === 'number' ? `${k}. ${t}` : t)));
   const views = { 1: step1, 2: step2, 3: step3, 4: step4, 5: step5, 6: stepVal, 7: step6, db: stepDb };
   const y = window.scrollY;
-  document.getElementById('app').replaceChildren(h('div', {}, (views[S.step] || step1)()));
+  document.getElementById('app').replaceChildren(h('div', {}, UI.modulo ? moduloTecnici() : (views[S.step] || step1)()));
   window.scrollTo(0, y);
 }
 loadArchive().then(render, e => { DB.error = e.message; render(); });
