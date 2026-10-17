@@ -104,6 +104,12 @@
   .doc-tab td, .doc-tab th { padding:6px 8px; }
   .firme th { width:110px; color:var(--ink); }
   .firme td.firma { width:40%; height:52px; }
+  table.val td { vertical-align:top; }
+  table.val select.esito { width:auto; min-width:120px; }
+  table.mis { table-layout:fixed; width:100%; }
+  table.val td:nth-child(4) { white-space:nowrap; }
+  table.mis th:nth-child(2) { width:140px; }
+  table.mis th:nth-child(3) { width:32%; }
   @page { size:A4; margin:16mm 14mm 18mm; @bottom-right { content:"Pagina " counter(page) " di " counter(pages); font-size:8pt; color:#555; } }
   @media print {
     header, .noprint { display:none !important; }
@@ -119,6 +125,7 @@
     .doc-funzione { break-before:page; }
     .doc-sez { break-before:page; }
     .doc-firme { break-inside:avoid; }
+    .doc-val { break-before:page; }
     .doc h2, .doc h3 { break-after:avoid; }
     .doc tr, .blk, .grafo-wrap { break-inside:avoid; }
   }
@@ -135,13 +142,14 @@
 <script src="vdma.js"></script>
 <script src="zip.js"></script>
 <script src="schema.js"></script>
+<script src="validazione.js"></script>
 <script>
 'use strict';
 const E = window.SafetyEngine;
 const KEY = 'safety-eval-v1';
 const STEPS = [
   [1, 'Progetto e funzioni'], [2, 'Architettura'], [3, 'Componenti'],
-  [4, 'Calcolo'], [5, 'Verifica'], [6, 'Report'], ['db', 'Archivio articoli'],
+  [4, 'Calcolo'], [5, 'Verifica'], [6, 'Validazione'], [7, 'Report'], ['db', 'Archivio articoli'],
 ];
 const clone = o => JSON.parse(JSON.stringify(o));
 const uid = () => Math.random().toString(36).slice(2, 9);
@@ -598,12 +606,85 @@ function verdict(f, r, report) {
 function step5() {
   return [
     h('h1', {}, '5. Verifica PL ≥ PLr'),
-    h('p', { class: 'sub' }, 'Il PL della funzione è il minimo tra quello ricavato dalla somma dei PFH e quelli dei singoli sottosistemi (ISO 13849-1, 6.3). Restano da verificare a parte le misure contro gli errori sistematici e la validazione (ISO 13849-2).'),
+    h('p', { class: 'sub' }, 'Il PL della funzione è il minimo tra quello ricavato dalla somma dei PFH e quelli dei singoli sottosistemi (ISO 13849-1, 6.3). Le misure contro i guasti sistematici e le prove di validazione (ISO 13849-2) si compilano nel passo 6.'),
     S.funzioni.length ? S.funzioni.map(f => verdict(f, evalFn(f))) : fnTabs(),
   ];
 }
 
-// ---- passo 6 ----
+// ---- passo 6: guasti sistematici e validazione ----
+const V = window.Validazione;
+const ESITO_TXT = Object.fromEntries(V.ESITI);
+const sistematiche = () => (S.sistematiche = S.sistematiche || { esiti: {} });
+const valFn = f => (f.validazione = f.validazione || { esiti: {}, extra: [] });
+function selEsito(get, set) {
+  return h('select', { class: 'esito', onchange: e => { set(e.target.value); render(); } },
+    V.ESITI.map(([v, t]) => h('option', { value: v, selected: (get() || '') === v }, t)));
+}
+function valPill(r) {
+  return r.completa ? h('span', { class: 'pill ok' }, 'validata')
+    : r.ko ? h('span', { class: 'pill bad' }, `${r.ko} non OK`) : h('span', { class: 'pill mute' }, `${r.aperte} da eseguire`);
+}
+function stepVal() {
+  const sis = sistematiche();
+  const esitoMisura = id => (sis.esiti[id] = sis.esiti[id] || {});
+  return [
+    h('h1', {}, '6. Guasti sistematici e validazione'),
+    h('p', { class: 'sub' }, 'Il calcolo del PL copre i guasti casuali dell\'hardware. Qui si documentano le misure contro i guasti sistematici (ISO 13849-1, all. G) e le prove di validazione di ogni funzione sulla macchina (ISO 13849-2). Tutto finisce nel report.'),
+    h('section', {}, h('h2', {}, 'Misure contro i guasti sistematici'),
+      V.MISURE_SISTEMATICHE.map(g => [h('h3', {}, g.gruppo), h('div', { class: 'scroll' }, h('table', { class: 'val mis' },
+        h('thead', {}, h('tr', {}, h('th', {}, 'Misura'), h('th', {}, 'Esito'), h('th', {}, 'Note / riferimento'))),
+        h('tbody', {}, g.misure.map(([id, testo]) => h('tr', {}, h('td', {}, testo),
+          h('td', {}, selEsito(() => esitoMisura(id).esito, v => esitoMisura(id).esito = v)),
+          h('td', {}, field(null, () => esitoMisura(id).note, v => esitoMisura(id).note = v)))))))]),
+      h('div', { class: 'grid', style: 'margin-top:12px' },
+        field('Progetto software / versione', () => sis.swVersione, v => sis.swVersione = v),
+        field('Firma del programma F', () => sis.swFirma, v => sis.swFirma = v, { placeholder: 'es. firma complessiva F' }))),
+    S.funzioni.length ? S.funzioni.map((f, i) => {
+      const v = valFn(f);
+      const lista = V.prove(f);
+      const esito = key => (v.esiti[key] = v.esiti[key] || {});
+      return h('section', {},
+        h('div', { class: 'row', style: 'margin-top:0' }, h('h2', { style: 'margin:0' }, `Validazione ${i + 1}. ${f.nome}`), h('span', { class: 'spacer' }), valPill(V.riepilogo(lista))),
+        h('div', { class: 'grid', style: 'margin-top:10px' },
+          field('Eseguita da', () => v.esecutore, x => v.esecutore = x),
+          field('Data', () => v.data, x => v.data = x, { type: 'date' })),
+        h('div', { class: 'scroll', style: 'margin-top:10px' }, h('table', { class: 'val' },
+          h('thead', {}, h('tr', {}, h('th', {}, 'N.'), h('th', {}, 'Prova'), h('th', {}, 'Risultato atteso'), h('th', {}, 'Esito'), h('th', {}, 'Note'), h('th', {}))),
+          h('tbody', {}, lista.map((p, j) => h('tr', {},
+            h('td', {}, j + 1),
+            h('td', {}, p.extra ? field(null, () => p.extra.testo, x => p.extra.testo = x) : p.testo),
+            h('td', {}, p.extra ? field(null, () => p.extra.atteso, x => p.extra.atteso = x) : p.atteso),
+            h('td', {}, selEsito(() => p.esito, x => esito(p.key).esito = x)),
+            h('td', {}, field(null, () => p.note, x => esito(p.key).note = x)),
+            h('td', {}, p.extra ? h('button', { title: 'Elimina la prova', onclick: () => { v.extra = v.extra.filter(x => x !== p.extra); delete v.esiti[p.key]; render(); } }, '×') : null)))))),
+        h('div', { class: 'row' }, h('button', { onclick: () => { v.extra.push({ id: uid(), testo: '', atteso: '' }); render(); } }, '+ prova')));
+    }) : fnTabs(),
+  ];
+}
+function valReport(f, n) {
+  const v = f.validazione || {};
+  const lista = V.prove(f);
+  return [
+    h('h3', {}, `${n}.4 Validazione (ISO 13849-2)`),
+    h('p', { style: 'margin:0 0 6px' }, `Eseguita da: ${v.esecutore || '__________________'} · Data: ${v.data || '__________'} · Firma: ______________________`),
+    h('table', { class: 'doc-tab val' },
+      h('thead', {}, h('tr', {}, h('th', {}, 'N.'), h('th', {}, 'Prova'), h('th', {}, 'Risultato atteso'), h('th', {}, 'Esito'), h('th', {}, 'Note'))),
+      h('tbody', {}, lista.map((p, j) => h('tr', {}, h('td', {}, j + 1), h('td', {}, p.testo || '—'), h('td', {}, p.atteso || ''),
+        h('td', { class: p.esito === 'ok' ? 'ok' : p.esito === 'ko' ? 'bad' : '' }, p.esito ? ESITO_TXT[p.esito] : ''), h('td', {}, p.note || ''))))),
+  ];
+}
+function sistematicheReport() {
+  const sis = S.sistematiche || { esiti: {} };
+  return h('div', { class: 'doc-sez' },
+    h('h2', { class: 'doc-h' }, 'Misure contro i guasti sistematici'),
+    h('p', {}, 'ISO 13849-1, allegato G, e requisiti del software di sicurezza.' + (sis.swVersione ? ` Progetto software: ${sis.swVersione}.` : '') + (sis.swFirma ? ` Firma del programma F: ${sis.swFirma}.` : '')),
+    V.MISURE_SISTEMATICHE.map(g => [h('h3', {}, g.gruppo), h('table', { class: 'doc-tab val mis' },
+      h('thead', {}, h('tr', {}, h('th', {}, 'Misura'), h('th', {}, 'Esito'), h('th', {}, 'Note / riferimento'))),
+      h('tbody', {}, g.misure.map(([id, testo]) => { const e = sis.esiti[id] || {};
+        return h('tr', {}, h('td', {}, testo), h('td', { class: e.esito === 'ok' ? 'ok' : e.esito === 'ko' ? 'bad' : '' }, e.esito ? ESITO_TXT[e.esito] : ''), h('td', {}, e.note || '')); })))]));
+}
+
+// ---- passo 7 ----
 function download(name, text) {
   const a = h('a', { href: URL.createObjectURL(new Blob([text], { type: 'application/json' })), download: name });
   document.body.append(a); a.click(); a.remove();
@@ -627,7 +708,7 @@ function step6() {
       h('button', { onclick: () => importFile(d => { if (!d.funzioni) throw new Error('manca "funzioni"'); const { articoli, ...v } = d; if (Array.isArray(articoli)) A = window.Archivio.unisci(A, articoli).articoli; S = Object.assign(defaultState(), v); }) }, 'Importa valutazione'),
       h('span', { class: 'spacer' }),
       h('button', { onclick: () => { if (confirm('Cancellare la valutazione corrente? L\'archivio articoli resta.')) { S = defaultState(); render(); } } }, 'Nuova valutazione')),
-    h('p', { class: 'note noprint', style: 'margin-top:0' }, 'Nella finestra di stampa scegli "Salva come PDF". Numero documento, revisione e firmatari si compilano nel passo 1.'),
+    h('p', { class: 'note noprint', style: 'margin-top:0' }, 'Nella finestra di stampa scegli "Salva come PDF". Numero documento, revisione e firmatari si compilano nel passo 1; misure sistematiche e prove di validazione nel passo 6. Le prove non compilate restano vuote, da completare a mano sul foglio.'),
     // piè di pagina del PDF: documento, revisione e numero di pagina
     h('style', {}, `@page { @bottom-left { content: ${JSON.stringify([p.documento, p.revisione ? 'Rev. ' + p.revisione : ''].filter(Boolean).join(' · ') || (p.nome || 'Safety evaluation'))}; font-size:8pt; color:#555; } }`),
     h('div', { class: 'doc' },
@@ -639,9 +720,9 @@ function step6() {
         dato('Norme', 'ISO 13849-1 (PL), IEC 62061 (SIL equivalente)')),
       h('h2', { class: 'doc-h' }, 'Riepilogo'),
       h('table', { class: 'doc-tab' },
-        h('thead', {}, h('tr', {}, h('th', {}, 'N.'), h('th', {}, 'Funzione di sicurezza'), h('th', {}, 'PLr'), h('th', {}, 'PL raggiunto'), h('th', {}, 'Esito'))),
+        h('thead', {}, h('tr', {}, h('th', {}, 'N.'), h('th', {}, 'Funzione di sicurezza'), h('th', {}, 'PLr'), h('th', {}, 'PL raggiunto'), h('th', {}, 'Esito'), h('th', {}, 'Validazione'))),
         h('tbody', {}, ris.map(([f, r], i) => h('tr', {}, h('td', {}, i + 1), h('td', {}, f.nome), h('td', {}, r.plr || '—'), h('td', {}, r.pl || 'n.d.'),
-          h('td', { class: r.ok ? 'ok' : 'bad' }, r.ok ? 'soddisfatto' : 'non dimostrato'))))),
+          h('td', { class: r.ok ? 'ok' : 'bad' }, r.ok ? 'soddisfatto' : 'non dimostrato'), h('td', {}, valPill(V.riepilogo(V.prove(f)))))))),
       h('div', { class: 'doc-firme' },
         h('h2', { class: 'doc-h' }, 'Approvazione'),
         h('table', { class: 'doc-tab firme' },
@@ -655,7 +736,9 @@ function step6() {
         grafoRischio(f),
         f.sottosistemi.length ? [h('h3', {}, `${i + 1}.2 Architettura`), schema(f, false)] : null,
         h('h3', {}, `${i + 1}.3 Verifica PL ≥ PLr`),
-        h('div', { class: 'doc-verifica' }, verdict(f, r, true)))),
+        h('div', { class: 'doc-verifica' }, verdict(f, r, true)),
+        h('div', { class: 'doc-val' }, valReport(f, i + 1)))),
+      sistematicheReport(),
       h('div', { class: 'doc-sez' },
         h('h2', { class: 'doc-h' }, 'Componenti usati e fonti'), h('table', { class: 'doc-tab' },
           h('thead', {}, h('tr', {}, h('th', {}, 'Articolo'), h('th', {}, 'PFH'), h('th', {}, 'B10d'), h('th', {}, 'MTTFd'), h('th', {}, 'Fonte'), h('th', {}, 'Verificato'))),
@@ -664,7 +747,7 @@ function step6() {
             h('td', { style: 'font-size:12px' }, `${a.fonte || 'SENZA FONTE'}${a.dataFonte ? ' (' + a.dataFonte + ')' : ''}`),
             h('td', { class: a.verificato ? 'ok' : 'warn' }, a.verificato ? 'sì' : 'no')))))),
         k1Fonti()),
-      h('p', { class: 'note' }, 'Risultati da confrontare con SISTEMA o Safety Evaluation Tool. Restano da documentare a parte le misure contro gli errori sistematici e la validazione (ISO 13849-2).')),
+      h('p', { class: 'note' }, 'Risultati da confrontare con SISTEMA o Safety Evaluation Tool.')),
   ];
 }
 // Origine del PFH dei sottosistemi ad architettura designata: tab. K.1 o valore inserito a mano
@@ -804,7 +887,7 @@ function draw() {
   saveArchive();
   document.getElementById('nav').replaceChildren(...STEPS.map(([k, t]) =>
     h('button', { class: S.step === k ? 'on' : '', onclick: () => go(k) }, typeof k === 'number' ? `${k}. ${t}` : t)));
-  const views = { 1: step1, 2: step2, 3: step3, 4: step4, 5: step5, 6: step6, db: stepDb };
+  const views = { 1: step1, 2: step2, 3: step3, 4: step4, 5: step5, 6: stepVal, 7: step6, db: stepDb };
   const y = window.scrollY;
   document.getElementById('app').replaceChildren(h('div', {}, (views[S.step] || step1)()));
   window.scrollTo(0, y);

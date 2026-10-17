@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const read = f => fs.readFileSync(path.join(__dirname, f), 'utf8');
 let html = read('index.html');
-for (const f of ['engine.js', 'articoli.js', 'archivio.js', 'sistema.js', 'vdma.js', 'zip.js', 'schema.js']) {
+for (const f of ['engine.js', 'articoli.js', 'archivio.js', 'sistema.js', 'vdma.js', 'zip.js', 'schema.js', 'validazione.js']) {
   const tag = `<script src="${f}"></script>`;
   if (!html.includes(tag)) throw new Error(`manca ${tag} in index.html`);
   html = html.replace(tag, () => `<script>\n${read(f).replace(/<\/script/gi, '<\\/script')}\n</script>`);
