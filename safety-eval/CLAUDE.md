@@ -20,7 +20,7 @@ Web app statica (HTML + JS, nessuna dipendenza; con `npm start` il server locale
 3. Componenti: sottosistemi raggruppati per percorso e poi i comuni, nell'ordine dello schema (`Schema.gruppi`, stesso ordine nel passo 4); articoli dall'archivio filtrati per tipologia secondo il ruolo del sottosistema (ricerca e "tutte le tipologie" per allargare), quantità; per l'architettura designata canale, DC e dati d'uso per B10d.
 4. Calcolo: MTTFd per canale (all. C, D.2, cap 100 anni, 2500 in cat. 4), DCavg (all. E), CCF (tab. F.1, ≥ 65), PFH dalla tab. K.1 (`pfhK1` in engine.js: riga MTTFd immediatamente inferiore; DC alta in cat. 2/3 → colonna DC media; oltre 100 anni → riga 100), sovrascrivibile a mano con avviso se diverso.
 5. Verifica: PL = min(PL da somma PFH, PL dei sottosistemi) ≥ PLr; serve almeno un sottosistema per rilevamento, logica e attuazione.
-6. Report stampabile (PDF dal browser) con elenco fonti.
+6. Report come documento da firmare: intestazione (n. documento, revisione, data), riepilogo funzioni, tabella firme Redatto/Verificato/Approvato (dati nel passo 1), poi un capitolo per funzione (PLr con grafo, schema, verifica), componenti e fonti. "Esporta PDF da firmare" = stampa del browser con CSS @page A4 (piè di pagina con documento e numero pagina; ogni funzione su pagina nuova). Nessun pulsante avanti/indietro: si naviga con le schede in alto.
 
 ## Regole
 - Nessun valore di catalogo o di tabella non verificato; i campi mancanti restano vuoti e generano avvisi.
