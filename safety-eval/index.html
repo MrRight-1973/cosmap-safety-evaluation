@@ -93,10 +93,34 @@
   .grafo { flex:0 1 540px; }
   .legenda { display:flex; flex-wrap:wrap; gap:12px; font-size:12.5px; color:var(--mute); margin:0 0 6px; }
   .legenda span::before { content:''; display:inline-block; width:10px; height:10px; border-radius:2px; background:var(--rc); margin-right:5px; vertical-align:-1px; }
+  .doc { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:22px 26px; }
+  .doc-testa { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; border-bottom:2px solid var(--ink); padding-bottom:10px; }
+  .doc-tipo { font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--mute); }
+  .doc-num { text-align:right; font-size:13px; white-space:nowrap; }
+  .doc-dati { margin:12px 0 4px; }
+  .doc h2.doc-h { font-size:17px; margin:26px 0 8px; padding-bottom:4px; border-bottom:1px solid var(--line); }
+  .doc h3 { font-size:14px; margin:16px 0 6px; }
+  .doc .scroll { overflow-x:auto; }
+  .doc-tab td, .doc-tab th { padding:6px 8px; }
+  .firme th { width:110px; color:var(--ink); }
+  .firme td.firma { width:40%; height:52px; }
+  @page { size:A4; margin:16mm 14mm 18mm; @bottom-right { content:"Pagina " counter(page) " di " counter(pages); font-size:8pt; color:#555; } }
   @media print {
     header, .noprint { display:none !important; }
     body { background:#fff; color:#000; }
-    section { border:none; padding:0; }
+    main { padding:0 !important; max-width:none !important; }
+    section, .doc { border:none; padding:0; border-radius:0; }
+    * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .scroll, .doc .scroll { overflow:visible !important; }
+    .doc .schema { zoom:.7; }
+    .doc .grafo-wrap { zoom:.7; flex-wrap:nowrap; }
+    .doc .big { font-size:17px; margin:4px 0 6px; }
+    .doc-verifica { break-inside:avoid; }
+    .doc-funzione { break-before:page; }
+    .doc-sez { break-before:page; }
+    .doc-firme { break-inside:avoid; }
+    .doc h2, .doc h3 { break-after:avoid; }
+    .doc tr, .blk, .grafo-wrap { break-inside:avoid; }
   }
 </style>
 </head>
@@ -268,13 +292,6 @@ function fnTabs() {
   return h('div', { class: 'tabs' }, S.funzioni.map((f, i) =>
     h('button', { class: i === S.fSel ? 'on' : '', onclick: () => { S.fSel = i; render(); } }, f.nome || `Funzione ${i + 1}`)));
 }
-function navButtons() {
-  const i = STEPS.findIndex(s => s[0] === S.step);
-  return h('div', { class: 'row noprint' },
-    i > 0 && STEPS[i - 1][0] !== 'db' ? h('button', { onclick: () => go(STEPS[i - 1][0]) }, '← ' + STEPS[i - 1][1]) : null,
-    h('span', { class: 'spacer' }),
-    i < 5 ? h('button', { class: 'p', onclick: () => go(STEPS[i + 1][0]) }, STEPS[i + 1][1] + ' →') : null);
-}
 function go(step) { S.step = step; render(); window.scrollTo(0, 0); }
 
 // ---- passo 1 ----
@@ -330,8 +347,13 @@ function step1() {
     h('section', {}, h('h2', {}, 'Progetto'), h('div', { class: 'grid' },
       field('Nome valutazione', () => p.nome, v => p.nome = v),
       field('Macchina / impianto', () => p.macchina, v => p.macchina = v),
-      field('Autore', () => p.autore, v => p.autore = v),
+      field('Cliente', () => p.cliente, v => p.cliente = v),
+      field('N. documento', () => p.documento, v => p.documento = v),
+      field('Revisione', () => p.revisione, v => p.revisione = v, { placeholder: '0' }),
       field('Data', () => p.data, v => p.data = v, { type: 'date' }),
+      field('Redatto da', () => p.autore, v => p.autore = v),
+      field('Verificato da', () => p.verificato, v => p.verificato = v),
+      field('Approvato da', () => p.approvato, v => p.approvato = v),
       field('Mission time [anni]', () => p.missionTime, v => p.missionTime = v || 20, { type: 'number', min: 1 }))),
     ...S.funzioni.map((f, i) => h('section', {},
       h('div', { class: 'row', style: 'margin-top:0' }, h('h2', { style: 'margin:0' }, `Funzione ${i + 1}`), h('span', { class: 'spacer' }),
@@ -562,9 +584,9 @@ function step4() {
 }
 
 // ---- passo 5 ----
-function verdict(f, r) {
-  return h('section', {},
-    h('div', { class: 'row', style: 'margin-top:0' }, h('h2', { style: 'margin:0' }, f.nome),
+function verdict(f, r, report) {
+  return h(report ? 'div' : 'section', {},
+    report ? null : h('div', { class: 'row', style: 'margin-top:0' }, h('h2', { style: 'margin:0' }, f.nome),
       h('span', { class: 'spacer' }), h('span', {}, 'PLr ', h('b', {}, r.plr || '—')), plPill(r.pl, r.plr)),
     h('p', { class: 'big ' + (r.ok ? 'ok' : 'bad') }, r.ok ? 'Requisito soddisfatto' : 'Requisito non dimostrato'),
     h('div', { class: 'scroll' }, h('table', {},
@@ -594,32 +616,55 @@ function importFile(cb) {
 function step6() {
   const p = S.progetto;
   const used = new Set(S.funzioni.flatMap(f => f.sottosistemi.flatMap(ss => ss.componenti.map(c => c.articoloId))));
+  const ris = S.funzioni.map(f => [f, evalFn(f)]);
+  const titoloFile = [p.documento, p.nome || 'safety-evaluation', p.revisione ? 'rev ' + p.revisione : ''].filter(Boolean).join(' ');
+  const esportaPdf = () => { const t = document.title; document.title = titoloFile; window.print(); document.title = t; };
+  const dato = (k, v) => [h('span', {}, k), h('span', {}, v || '—')];
   return [
     h('div', { class: 'row noprint', style: 'margin-top:0;margin-bottom:12px' },
-      h('button', { class: 'p', onclick: () => window.print() }, 'Stampa / salva PDF'),
-      h('button', { onclick: () => { const used = new Set(S.funzioni.flatMap(f => f.sottosistemi.flatMap(ss => ss.componenti.map(c => c.articoloId)))); download(`${p.nome || 'safety-evaluation'}.json`, JSON.stringify({ ...S, articoli: A.filter(a => used.has(a.id)) }, null, 2)); } }, 'Esporta valutazione'),
+      h('button', { class: 'p', onclick: esportaPdf }, 'Esporta PDF da firmare'),
+      h('button', { onclick: () => download(`${titoloFile}.json`, JSON.stringify({ ...S, articoli: A.filter(a => used.has(a.id)) }, null, 2)) }, 'Esporta valutazione'),
       h('button', { onclick: () => importFile(d => { if (!d.funzioni) throw new Error('manca "funzioni"'); const { articoli, ...v } = d; if (Array.isArray(articoli)) A = window.Archivio.unisci(A, articoli).articoli; S = Object.assign(defaultState(), v); }) }, 'Importa valutazione'),
       h('span', { class: 'spacer' }),
       h('button', { onclick: () => { if (confirm('Cancellare la valutazione corrente? L\'archivio articoli resta.')) { S = defaultState(); render(); } } }, 'Nuova valutazione')),
-    h('h1', {}, p.nome || 'Safety evaluation'),
-    h('div', { class: 'kv', style: 'margin-bottom:14px' },
-      h('span', {}, 'Macchina'), h('span', {}, p.macchina || '—'), h('span', {}, 'Autore'), h('span', {}, p.autore || '—'),
-      h('span', {}, 'Data'), h('span', {}, p.data || '—'), h('span', {}, 'Mission time'), h('span', {}, `${p.missionTime} anni`),
-      h('span', {}, 'Norme'), h('span', {}, 'ISO 13849-1 (PL), IEC 62061 (SIL equivalente)')),
-    S.funzioni.map(f => [
-      f.descrizione ? h('p', {}, h('b', {}, f.nome + ': '), f.descrizione) : null,
-      h('section', {}, h('h2', {}, `PLr: ${f.nome}`), grafoRischio(f)),
-      f.sottosistemi.length ? h('section', {}, h('h2', {}, `Schema a blocchi: ${f.nome}`), schema(f, false)) : null,
-      verdict(f, evalFn(f)),
-    ]),
-    h('section', {}, h('h2', {}, 'Componenti usati e fonti'), h('div', { class: 'scroll' }, h('table', {},
-      h('thead', {}, h('tr', {}, h('th', {}, 'Articolo'), h('th', {}, 'PFH'), h('th', {}, 'B10d'), h('th', {}, 'MTTFd'), h('th', {}, 'Fonte'), h('th', {}, 'Verificato'))),
-      h('tbody', {}, A.filter(a => used.has(a.id)).map(a => h('tr', {},
-        h('td', {}, `${a.codice} · ${a.descrizione || ''}`), h('td', {}, fmt(a.pfh)), h('td', {}, fmt(a.b10d, 0)), h('td', {}, fmt(a.mttfd, 1)),
-        h('td', { style: 'font-size:12px' }, `${a.fonte || 'SENZA FONTE'}${a.dataFonte ? ' (' + a.dataFonte + ')' : ''}`),
-        h('td', { class: a.verificato ? 'ok' : 'warn' }, a.verificato ? 'sì' : 'no'))))))),
-    k1Fonti(),
-    h('p', { class: 'note' }, 'Risultati da confrontare con SISTEMA o Safety Evaluation Tool prima di usarli in documenti di conformità.'),
+    h('p', { class: 'note noprint', style: 'margin-top:0' }, 'Nella finestra di stampa scegli "Salva come PDF". Numero documento, revisione e firmatari si compilano nel passo 1.'),
+    // piè di pagina del PDF: documento, revisione e numero di pagina
+    h('style', {}, `@page { @bottom-left { content: ${JSON.stringify([p.documento, p.revisione ? 'Rev. ' + p.revisione : ''].filter(Boolean).join(' · ') || (p.nome || 'Safety evaluation'))}; font-size:8pt; color:#555; } }`),
+    h('div', { class: 'doc' },
+      h('div', { class: 'doc-testa' },
+        h('div', {}, h('div', { class: 'doc-tipo' }, 'Relazione di valutazione delle funzioni di sicurezza'), h('h1', { style: 'margin:2px 0 0' }, p.nome || 'Safety evaluation')),
+        h('div', { class: 'doc-num' }, p.documento ? h('b', {}, p.documento) : null, h('div', {}, `Rev. ${p.revisione || '0'} · ${p.data || '—'}`))),
+      h('div', { class: 'kv doc-dati' },
+        dato('Macchina / impianto', p.macchina), dato('Cliente', p.cliente), dato('Mission time', `${p.missionTime} anni`),
+        dato('Norme', 'ISO 13849-1 (PL), IEC 62061 (SIL equivalente)')),
+      h('h2', { class: 'doc-h' }, 'Riepilogo'),
+      h('table', { class: 'doc-tab' },
+        h('thead', {}, h('tr', {}, h('th', {}, 'N.'), h('th', {}, 'Funzione di sicurezza'), h('th', {}, 'PLr'), h('th', {}, 'PL raggiunto'), h('th', {}, 'Esito'))),
+        h('tbody', {}, ris.map(([f, r], i) => h('tr', {}, h('td', {}, i + 1), h('td', {}, f.nome), h('td', {}, r.plr || '—'), h('td', {}, r.pl || 'n.d.'),
+          h('td', { class: r.ok ? 'ok' : 'bad' }, r.ok ? 'soddisfatto' : 'non dimostrato'))))),
+      h('div', { class: 'doc-firme' },
+        h('h2', { class: 'doc-h' }, 'Approvazione'),
+        h('table', { class: 'doc-tab firme' },
+          h('thead', {}, h('tr', {}, h('th', {}), h('th', {}, 'Nome'), h('th', {}, 'Data'), h('th', {}, 'Firma'))),
+          h('tbody', {}, [['Redatto', p.autore], ['Verificato', p.verificato], ['Approvato', p.approvato]].map(([ruolo, nome]) =>
+            h('tr', {}, h('th', {}, ruolo), h('td', {}, nome || ''), h('td', {}, ruolo === 'Redatto' ? p.data || '' : ''), h('td', { class: 'firma' }))))),
+      ris.map(([f, r], i) => h('div', { class: 'doc-funzione' },
+        h('h2', { class: 'doc-h' }, `${i + 1}. ${f.nome}`),
+        f.descrizione ? h('p', {}, f.descrizione) : null,
+        h('h3', {}, `${i + 1}.1 Livello di prestazione richiesto`),
+        grafoRischio(f),
+        f.sottosistemi.length ? [h('h3', {}, `${i + 1}.2 Architettura`), schema(f, false)] : null,
+        h('h3', {}, `${i + 1}.3 Verifica PL ≥ PLr`),
+        h('div', { class: 'doc-verifica' }, verdict(f, r, true)))),
+      h('div', { class: 'doc-sez' },
+        h('h2', { class: 'doc-h' }, 'Componenti usati e fonti'), h('table', { class: 'doc-tab' },
+          h('thead', {}, h('tr', {}, h('th', {}, 'Articolo'), h('th', {}, 'PFH'), h('th', {}, 'B10d'), h('th', {}, 'MTTFd'), h('th', {}, 'Fonte'), h('th', {}, 'Verificato'))),
+          h('tbody', {}, A.filter(a => used.has(a.id)).map(a => h('tr', {},
+            h('td', {}, `${a.codice} · ${a.descrizione || ''}`), h('td', {}, fmt(a.pfh)), h('td', {}, fmt(a.b10d, 0)), h('td', {}, fmt(a.mttfd, 1)),
+            h('td', { style: 'font-size:12px' }, `${a.fonte || 'SENZA FONTE'}${a.dataFonte ? ' (' + a.dataFonte + ')' : ''}`),
+            h('td', { class: a.verificato ? 'ok' : 'warn' }, a.verificato ? 'sì' : 'no')))))),
+        k1Fonti()),
+      h('p', { class: 'note' }, 'Risultati da confrontare con SISTEMA o Safety Evaluation Tool. Restano da documentare a parte le misure contro gli errori sistematici e la validazione (ISO 13849-2).')),
   ];
 }
 // Origine del PFH dei sottosistemi ad architettura designata: tab. K.1 o valore inserito a mano
@@ -761,7 +806,7 @@ function draw() {
     h('button', { class: S.step === k ? 'on' : '', onclick: () => go(k) }, typeof k === 'number' ? `${k}. ${t}` : t)));
   const views = { 1: step1, 2: step2, 3: step3, 4: step4, 5: step5, 6: step6, db: stepDb };
   const y = window.scrollY;
-  document.getElementById('app').replaceChildren(h('div', {}, (views[S.step] || step1)(), S.step !== 'db' ? navButtons() : null));
+  document.getElementById('app').replaceChildren(h('div', {}, (views[S.step] || step1)()));
   window.scrollTo(0, y);
 }
 loadArchive().then(render, e => { DB.error = e.message; render(); });
