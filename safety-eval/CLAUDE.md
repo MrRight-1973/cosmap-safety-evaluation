@@ -1,5 +1,7 @@
 # safety-eval
 
+**Dismessa (fase 6 dell'integrazione):** le funzioni di sicurezza si fanno in `cosmap-analisi-rischi`, dove sono stati copiati motore e test. Qui restano solo l'export delle valutazioni e dell'archivio articoli da importare là; niente sviluppi nuovi.
+
 Web app statica (HTML + JS, nessuna dipendenza; con `npm start` il server locale salva l'archivio su file) che guida passo passo una safety evaluation secondo ISO 13849-1 partendo da un archivio articoli. Lingua: italiano. Deriva dal calcolatore in `../calcolo-pl/`. Test di tutto il repository: `npm test` dalla radice.
 
 ## File

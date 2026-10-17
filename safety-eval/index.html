@@ -19,6 +19,8 @@
   nav button { border-radius:99px; }
   nav button.on { background:var(--acc); border-color:var(--acc); color:#fff; }
   main { max-width:1040px; margin:0 auto; padding:18px 16px 60px; }
+  .dismessa { max-width:1040px; margin:12px auto 0; padding:10px 14px; box-sizing:border-box; border:1px solid var(--warn); border-left-width:5px; font-size:13.5px; }
+  @media print { .dismessa { display:none; } }
   h1 { font-size:20px; margin:0 0 4px; }
   h2 { font-size:16px; margin:0 0 10px; }
   h3 { font-size:14px; margin:12px 0 6px; }
@@ -146,6 +148,10 @@
 </head>
 <body>
 <header><div class="hwrap"><b>Safety evaluation</b><nav id="nav"></nav></div></header>
+<div class="dismessa" role="note"><b>App dismessa.</b> Le funzioni di sicurezza, la validazione e le verifiche elettriche si fanno nell'app
+Analisi dei rischi (<code>cosmap-analisi-rischi</code>). Per portarci una valutazione: Report → "Esporta valutazione", poi nell'analisi, riquadro
+Funzioni di sicurezza, "Importa dalla safety evaluation". L'archivio articoli: Archivio articoli → "Esporta tutto", poi in Libreria e utenti →
+Articoli di sicurezza → "Importa libreria del costruttore".</div>
 <main id="app"></main>
 
 <script src="engine.js"></script>

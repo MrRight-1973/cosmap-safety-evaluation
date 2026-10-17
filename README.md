@@ -1,5 +1,19 @@
 # cosmap-safety-evaluation
 
+> **Dismessa.** Le funzioni di sicurezza (calcolo del PL, validazione, verifiche elettriche) sono un modulo dell'app
+> Analisi dei rischi, repository `cosmap-analisi-rischi`, con revisioni, firme e documenti archiviati. Questa app
+> resta solo per portare là i dati già fatti:
+>
+> - **Valutazioni**: Report → "Esporta valutazione" (file .json); nell'analisi, riquadro Funzioni di sicurezza,
+>   "Importa dalla safety evaluation". Entrano articoli usati, funzioni con il calcolo, prove di validazione,
+>   misure contro i guasti sistematici e verifiche elettriche.
+> - **Archivio articoli** (`data/archivio-articoli.json`): in Libreria e utenti → Articoli di sicurezza →
+>   "Importa libreria del costruttore", oppure `python manage.py importa_articoli percorso\archivio-articoli.json`.
+>   Lì si importano anche le librerie SISTEMA e VDMA dei costruttori.
+>
+> Il motore (`engine.js`, `schema.js`, `validazione.js`, `sistema.js`, `vdma.js`, `zip.js`) e i suoi test sono stati
+> copiati nell'analisi dei rischi (commit c080e8a): le correzioni si fanno solo là.
+
 Strumenti per la safety evaluation delle funzioni di sicurezza secondo ISO 13849-1 (PL) e IEC 62061 (SIL). Nessuna dipendenza: HTML e JavaScript che girano nel browser, anche offline.
 
 - `safety-eval/`: web app che guida passo passo la valutazione partendo da un archivio articoli; l'architettura di ogni funzione si costruisce come schema a blocchi, con i percorsi alternativi (per esempio funghi su F-DI oppure fungo sul pannello PROFIsafe) su righe diverse. Si apre `safety-eval/index.html`, oppure `npm run build` crea `safety-eval/safety-eval.html` a file unico. Dettagli in `safety-eval/CLAUDE.md`.
