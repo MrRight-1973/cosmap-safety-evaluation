@@ -181,7 +181,16 @@ function save() { try { const { articoli, ...rest } = S; localStorage.setItem(KE
 const ARCH_KEY = 'safety-eval-articoli';
 let A = [];                       // archivio articoli
 const DB = { mode: 'browser', file: null, saved: '', error: null, timer: null };
-const UI = { testo: '', produttore: '', tipo: '', daVerificare: false, limite: 100, edit: null, importa: null };
+const UI = { testo: '', produttore: '', tipo: '', daVerificare: false, utilizzati: false, limite: 100, edit: null, importa: null };
+// Spunta del passo 3 "solo articoli già utilizzati": preferenza di chi usa l'app, non della valutazione
+const SOLO_KEY = 'safety-eval-solo-utilizzati';
+let soloUtilizzati = false;
+try { soloUtilizzati = localStorage.getItem(SOLO_KEY) === '1'; } catch (e) {}
+// Articoli scelti nella valutazione aperta → "già utilizzati" nell'archivio, con la data dell'ultimo uso
+function segnaUtilizzati() {
+  const ids = new Set(S.funzioni.flatMap(f => f.sottosistemi.flatMap(ss => ss.componenti.map(c => c.articoloId))).filter(Boolean));
+  window.Archivio.segnaUtilizzati(A, ids, new Date().toISOString().slice(0, 10));
+}
 async function loadArchive() {
   const vecchio = Array.isArray(S.articoli) ? S.articoli : null; // versioni precedenti: archivio dentro lo stato
   delete S.articoli;
@@ -491,7 +500,7 @@ const SEL = {}; // filtri del passo 3 per sottosistema: { testo, tutti }
 function candidati(ss) {
   const s = SEL[ss.id] || {};
   const tipo = TIPO_RUOLO[ss.ruolo];
-  return window.Archivio.filtra(A, { testo: s.testo, tipo: s.tutti ? '' : tipo });
+  return window.Archivio.filtra(A, { testo: s.testo, tipo: s.tutti ? '' : tipo, utilizzati: soloUtilizzati });
 }
 function articleSelect(c, ss) {
   const groups = new Map();
@@ -517,13 +526,16 @@ function filtroArticoli(ss) {
       oninput: e => { s.testo = e.target.value; clearTimeout(s.t); s.t = setTimeout(() => { render(); const i = document.querySelector(`input[data-ss="${ss.id}"]`); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 250); } }),
     h('label', { style: 'display:flex;gap:6px;align-items:center;font-size:13px' },
       h('input', { type: 'checkbox', checked: s.tutti, style: 'width:auto', onchange: e => { s.tutti = e.target.checked; render(); } }), 'tutte le tipologie'),
-    h('span', { class: 'mute', style: 'font-size:13px' }, `${n} articoli${s.tutti || !tipo ? '' : ` di tipo "${tipo}" (ruolo ${ss.ruolo})`}`));
+    h('span', { class: 'mute', style: 'font-size:13px' }, `${n} articoli${soloUtilizzati ? ' già utilizzati' : ''}${s.tutti || !tipo ? '' : ` di tipo "${tipo}" (ruolo ${ss.ruolo})`}`));
 }
 function step3() {
   const f = fn();
   return [
     h('h1', {}, '3. Componenti dall\'archivio'),
     h('p', { class: 'sub' }, 'Per ogni sottosistema scegli gli articoli. Se un articolo manca, aggiungilo in "Archivio articoli" con la sua fonte.'),
+    h('div', { class: 'noprint', style: 'margin:-6px 0 12px' },
+      check(`Scegli solo tra gli articoli già utilizzati (${A.filter(a => a.utilizzato).length} in archivio, di qualsiasi costruttore)`, () => soloUtilizzati, v => {
+        soloUtilizzati = v; try { localStorage.setItem(SOLO_KEY, v ? '1' : '0'); } catch (e) {} })),
     fnTabs(),
     f ? window.Schema.gruppi(f).map(g => [
       g.titolo ? h('h2', { class: 'gruppo' }, g.comune ? g.titolo : `Percorso ${g.titolo}`,
@@ -893,12 +905,13 @@ function stepDb() {
       h('button', { onclick: () => { const a = { id: uid(), codice: 'Nuovo articolo', descrizione: '', produttore: UI.produttore || '', tipo: UI.tipo || 'sensore', pfh: null, b10d: null, mttfd: null, plMax: null, fonte: '', dataFonte: '', verificato: false, note: '' }; A.push(a); UI.edit = a.id; render(); } }, 'Aggiungi articolo')),
     importPanel(),
     h('section', {}, h('h2', {}, 'Costruttori'), h('div', { class: 'scroll' }, h('table', {},
-      h('thead', {}, h('tr', {}, ['Costruttore', 'Articoli', 'Per tipologia', 'Da verificare', 'Librerie', ''].map(t => h('th', {}, t)))),
+      h('thead', {}, h('tr', {}, ['Costruttore', 'Articoli', 'Per tipologia', 'Da verificare', 'Già utilizzati', 'Librerie', ''].map(t => h('th', {}, t)))),
       h('tbody', {}, prod.map(r => h('tr', { class: UI.produttore === r.produttore ? 'sel' : '' },
         h('td', {}, h('a', { href: '#', onclick: e => { e.preventDefault(); UI.produttore = UI.produttore === r.produttore ? '' : r.produttore; UI.limite = 100; render(); } }, r.produttore)),
         h('td', {}, r.articoli),
         h('td', { style: 'font-size:13px' }, Object.entries(r.tipi).map(([t, n]) => `${t} ${n}`).join(' · ')),
         h('td', { class: r.daVerificare ? 'warn' : 'ok' }, r.daVerificare),
+        h('td', {}, r.utilizzati),
         h('td', { style: 'font-size:12px' }, r.librerie.join(', ') || '—'),
         h('td', {}, h('button', { onclick: () => { if (confirm(`Eliminare tutti i ${r.articoli} articoli di ${r.produttore}? Le valutazioni che li usano resteranno senza dati.`)) { A = A.filter(a => (a.produttore || '(senza produttore)') !== r.produttore); if (UI.produttore === r.produttore) UI.produttore = ''; render(); } } }, 'Elimina')))))))),
     editPanel(),
@@ -907,14 +920,18 @@ function stepDb() {
         h('label', {}, 'Cerca', h('input', { type: 'search', value: UI.testo, placeholder: 'codice, descrizione, serie', oninput: e => { UI.testo = e.target.value; UI.limite = 100; clearTimeout(UI.t); UI.t = setTimeout(() => { render(); const i = document.querySelector('input[type=search]'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 250); } })),
         field('Costruttore', () => UI.produttore, v => { UI.produttore = v || ''; UI.limite = 100; }, { options: [[null, 'tutti'], ...prod.map(r => [r.produttore, `${r.produttore} (${r.articoli})`])] }),
         field('Tipologia', () => UI.tipo, v => { UI.tipo = v || ''; UI.limite = 100; }, { options: [[null, 'tutte'], ...TIPI] })),
-      check('Solo da verificare', () => UI.daVerificare, v => { UI.daVerificare = v; UI.limite = 100; }),
+      h('div', { class: 'row', style: 'margin-top:8px;gap:18px' },
+        check('Solo da verificare', () => UI.daVerificare, v => { UI.daVerificare = v; UI.limite = 100; }),
+        check('Solo già utilizzati', () => UI.utilizzati, v => { UI.utilizzati = v; UI.limite = 100; })),
       h('p', { class: 'note' }, `${list.length} articoli su ${A.length}.`),
       h('div', { class: 'scroll' }, h('table', {},
-        h('thead', {}, h('tr', {}, ['', 'Codice', 'Descrizione', 'Costruttore', 'Tipo', 'PFH', 'B10d', 'MTTFd', 'Verificato', ''].map(t => h('th', {}, t)))),
+        h('thead', {}, h('tr', {}, ['', 'Codice', 'Descrizione', 'Costruttore', 'Tipo', 'PFH', 'B10d', 'MTTFd', 'Verificato', 'Già utilizzato', ''].map(t => h('th', {}, t)))),
         h('tbody', {}, list.slice(0, UI.limite).map(a => h('tr', {},
           h('td', {}, thumb(a, 32)), h('td', {}, a.codice), h('td', { style: 'font-size:13px' }, a.descrizione || ''), h('td', { style: 'font-size:13px' }, a.produttore || ''), h('td', {}, a.tipo || ''),
           h('td', {}, fmt(a.pfh)), h('td', {}, fmt(a.b10d, 0)), h('td', {}, fmt(a.mttfd, 1)),
           h('td', {}, h('input', { type: 'checkbox', checked: a.verificato, style: 'width:auto', title: a.fonte || 'senza fonte', onchange: e => { a.verificato = e.target.checked; render(); } })),
+          h('td', { style: 'white-space:nowrap;font-size:13px' }, h('input', { type: 'checkbox', checked: !!a.utilizzato, style: 'width:auto', title: 'Togli la spunta per escluderlo (torna se è ancora in una valutazione aperta)',
+            onchange: e => { a.utilizzato = e.target.checked ? new Date().toISOString().slice(0, 10) : null; render(); } }), a.utilizzato ? ' ' + a.utilizzato : ''),
           h('td', { style: 'white-space:nowrap' },
             h('button', { onclick: () => { UI.edit = a.id; render(); window.scrollTo(0, 0); } }, 'Modifica'), ' ',
             h('button', { onclick: () => { if (confirm(`Eliminare ${a.codice}?`)) { A = A.filter(x => x !== a); render(); } } }, '×'))))))),
@@ -930,6 +947,7 @@ function render() {
   try { draw(); } finally { rendering = false; }
 }
 function draw() {
+  segnaUtilizzati();
   save();
   saveArchive();
   document.getElementById('nav').replaceChildren(...STEPS.map(([k, t]) =>

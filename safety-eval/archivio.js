@@ -37,15 +37,24 @@
     return archivio.concat(predefiniti.filter(a => !ids.has(a.id)).map(a => ({ ...a })));
   }
 
+  // Segna come "già utilizzati" gli articoli scelti in una valutazione (utilizzato = data dell'ultimo uso).
+  // Restituisce quanti articoli sono cambiati.
+  function segnaUtilizzati(archivio, ids, data) {
+    let cambiati = 0;
+    for (const a of archivio) if (ids.has(a.id) && a.utilizzato !== data) { a.utilizzato = data; cambiati++; }
+    return cambiati;
+  }
+
   function perProduttore(archivio) {
     const m = new Map();
     for (const a of archivio) {
       const k = a.produttore || '(senza produttore)';
-      if (!m.has(k)) m.set(k, { produttore: k, articoli: 0, daVerificare: 0, senzaFonte: 0, librerie: new Set(), tipi: {} });
+      if (!m.has(k)) m.set(k, { produttore: k, articoli: 0, daVerificare: 0, senzaFonte: 0, utilizzati: 0, librerie: new Set(), tipi: {} });
       const r = m.get(k);
       r.articoli++;
       if (!a.verificato) r.daVerificare++;
       if (!a.fonte) r.senzaFonte++;
+      if (a.utilizzato) r.utilizzati++;
       if (a.libreria) r.librerie.add(a.libreria);
       r.tipi[a.tipo || '—'] = (r.tipi[a.tipo || '—'] || 0) + 1;
     }
@@ -58,8 +67,9 @@
       (!f.produttore || (a.produttore || '(senza produttore)') === f.produttore) &&
       (!f.tipo || a.tipo === f.tipo) &&
       (!f.daVerificare || !a.verificato) &&
+      (!f.utilizzati || !!a.utilizzato) &&
       q.every(t => `${a.codice} ${a.descrizione} ${a.gruppo || ''} ${a.produttore}`.toLowerCase().includes(t)));
   }
 
-  return { unisci, conDefault, perProduttore, filtra };
+  return { unisci, conDefault, segnaUtilizzati, perProduttore, filtra };
 });
