@@ -50,3 +50,22 @@ test('verifiche elettriche: prove del cap. 18 con clausola, punti aggiunti e val
   assert.equal(lista[6].misurato, '0,08');
   assert.equal(V.proveElettriche(undefined).length, 6);
 });
+
+test('registro misure: lettura dei valori del tecnico, esito isolamento, riepilogo e incolla da foglio di calcolo', () => {
+  assert.deepEqual(V.leggiMisura('>1'), { op: '>', v: 1 });
+  assert.deepEqual(V.leggiMisura('<0,1'), { op: '<', v: 0.1 });
+  assert.deepEqual(V.leggiMisura(' 0,004 '), { op: '', v: 0.004 });
+  assert.equal(V.leggiMisura(''), null);
+  assert.ok(Number.isNaN(V.leggiMisura('ok').v));
+  assert.equal(V.esitoIsolamento({ l1pe: '>1', l2pe: '250' }), 'ok');
+  assert.equal(V.esitoIsolamento({ l1pe: '>1', l2pe: '0,8' }), 'ko');
+  assert.equal(V.esitoIsolamento({ l1pe: '<1' }), 'ko');
+  assert.equal(V.esitoIsolamento({ sigla: 'W1' }), '');
+  const el = {
+    equipotenziali: [{ punto: 'PE/quadro', rpe: '0,004' }, { punto: 'PE/telaio', rpe: '0,016' }, { punto: 'PE/porta' }],
+    cavi: [{ sigla: 'W1', l1pe: '>1', l2pe: '120', rpe: '<0,1', zs: '0,35' }, { sigla: 'W2', l1pe: '0,5', zs: '0,8' }, { sigla: 'W3' }],
+  };
+  assert.deepEqual(V.riepilogoRegistro(el), { equipotenziali: 3, cavi: 3, rpeMax: '<0,1', zsMax: '0,8', isoMin: '0,5', isoKo: ['W2'], senzaMisure: 2 });
+  const righe = V.daTesto('Sigla\tDa/a\tTipo cavo\nW1.M1\tQ1/M1\tFROR\t4x1.5\t1,5\n\nW1.M2;Q1/M2;FROR', V.COLONNE_CAVI);
+  assert.deepEqual(righe.map(r => [r.sigla, r.percorso, r.tipo, r.formazione]), [['W1.M1', 'Q1/M1', 'FROR', '4x1.5'], ['W1.M2', 'Q1/M2', 'FROR', '']]);
+});
