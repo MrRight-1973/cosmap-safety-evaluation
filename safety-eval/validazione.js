@@ -1,5 +1,5 @@
-// Misure contro i guasti sistematici (ISO 13849-1, all. G e requisiti del software di sicurezza) e prove
-// di validazione delle funzioni (ISO 13849-2). Sono liste di controllo: nessun valore numerico.
+// Misure contro i guasti sistematici (ISO 13849-1, all. G e requisiti del software di sicurezza), prove
+// di validazione delle funzioni (ISO 13849-2) e verifiche elettriche (IEC 60204-1, cap. 18).
 // Le prove di ogni funzione si ricavano dallo schema a blocchi; gli esiti stanno in f.validazione.esiti
 // per chiave, così una prova resta compilata finché il blocco che l'ha generata esiste.
 // Nel browser window.Validazione, in Node module.exports (richiede schema.js).
@@ -34,6 +34,32 @@
       ['sw-firma', 'Firma del programma F e stampa di accettazione archiviate'],
     ] },
   ];
+
+  // Verifiche dell'equipaggiamento elettrico (IEC 60204-1:2016, cap. 18). I criteri sono riassunti dalla norma
+  // con la clausola; vanno confrontati con la copia della norma in uso (stessa regola dei valori di catalogo).
+  const FONTE_ELETTRICHE = 'IEC 60204-1:2016 (EN 60204-1:2018), cap. 18';
+  const PROVE_ELETTRICHE = [
+    { key: 'continuita', clausola: '18.2.2', testo: 'Continuità del circuito di protezione equipotenziale (prova 1)',
+      criterio: 'Continuità verificata tra il morsetto PE e ogni parte del circuito di protezione', unita: 'Ω' },
+    { key: 'anello', clausola: '18.2.3', testo: 'Impedenza dell\'anello di guasto e protezione per interruzione automatica (prova 2)',
+      criterio: 'Impedenza compatibile con l\'intervento del dispositivo di protezione nei tempi richiesti (6.3.3, all. A)', unita: 'Ω' },
+    { key: 'isolamento', clausola: '18.3', testo: 'Resistenza di isolamento tra i conduttori dei circuiti di potenza e il circuito di protezione',
+      criterio: '500 V c.c.; non inferiore a 1 MΩ', unita: 'MΩ' },
+    { key: 'tensione', clausola: '18.4', testo: 'Prova di tensione (rigidità dielettrica)',
+      criterio: '2 × tensione nominale o 1000 V (il maggiore), 50/60 Hz per circa 1 s; nessuna scarica. Scollegare i componenti non adatti', unita: 'V' },
+    { key: 'residue', clausola: '18.5', testo: 'Protezione contro le tensioni residue',
+      criterio: 'Parti attive accessibili sotto 60 V entro 5 s dall\'interruzione dell\'alimentazione (6.2.4)', unita: 'V' },
+    { key: 'funzionali', clausola: '18.6', testo: 'Prove funzionali dei circuiti elettrici, in particolare di quelli di sicurezza',
+      criterio: 'Esito delle prove di validazione delle funzioni di sicurezza (ISO 13849-2)', unita: '' },
+  ];
+
+  // Prove elettriche standard + punti di misura aggiunti a mano, con valore misurato ed esito
+  function proveElettriche(el) {
+    const e = el || {};
+    const esiti = e.esiti || {};
+    return [...PROVE_ELETTRICHE, ...(e.extra || []).map(p => ({ key: 'extra:' + p.id, testo: p.testo, criterio: p.criterio, unita: p.unita, extra: p }))]
+      .map(p => ({ ...p, ...(esiti[p.key] || {}) }));
+  }
 
   const ESITI = [['', '—'], ['ok', 'OK'], ['ko', 'Non OK'], ['na', 'Non applicabile']];
 
@@ -85,5 +111,5 @@
     return r;
   }
 
-  return { MISURE_SISTEMATICHE, ESITI, proveAuto, prove, riepilogo };
+  return { MISURE_SISTEMATICHE, ESITI, FONTE_ELETTRICHE, PROVE_ELETTRICHE, proveAuto, prove, proveElettriche, riepilogo };
 });

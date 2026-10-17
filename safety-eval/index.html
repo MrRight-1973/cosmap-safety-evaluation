@@ -629,7 +629,7 @@ function stepVal() {
   const esitoMisura = id => (sis.esiti[id] = sis.esiti[id] || {});
   return [
     h('h1', {}, '6. Guasti sistematici e validazione'),
-    h('p', { class: 'sub' }, 'Il calcolo del PL copre i guasti casuali dell\'hardware. Qui si documentano le misure contro i guasti sistematici (ISO 13849-1, all. G) e le prove di validazione di ogni funzione sulla macchina (ISO 13849-2). Tutto finisce nel report.'),
+    h('p', { class: 'sub' }, 'Il calcolo del PL copre i guasti casuali dell\'hardware. Qui si documentano le misure contro i guasti sistematici (ISO 13849-1, all. G), le prove di validazione di ogni funzione sulla macchina (ISO 13849-2) e le verifiche elettriche (IEC 60204-1, cap. 18). Tutto finisce nel report.'),
     h('section', {}, h('h2', {}, 'Misure contro i guasti sistematici'),
       V.MISURE_SISTEMATICHE.map(g => [h('h3', {}, g.gruppo), h('div', { class: 'scroll' }, h('table', { class: 'val mis' },
         h('thead', {}, h('tr', {}, h('th', {}, 'Misura'), h('th', {}, 'Esito'), h('th', {}, 'Note / riferimento'))),
@@ -659,7 +659,53 @@ function stepVal() {
             h('td', {}, p.extra ? h('button', { title: 'Elimina la prova', onclick: () => { v.extra = v.extra.filter(x => x !== p.extra); delete v.esiti[p.key]; render(); } }, '×') : null)))))),
         h('div', { class: 'row' }, h('button', { onclick: () => { v.extra.push({ id: uid(), testo: '', atteso: '' }); render(); } }, '+ prova')));
     }) : fnTabs(),
+    elettricheUI(),
   ];
+}
+const elettriche = () => (S.elettriche = S.elettriche || { esiti: {}, extra: [] });
+function elettricheUI() {
+  const el = elettriche();
+  const lista = V.proveElettriche(el);
+  const esito = key => (el.esiti[key] = el.esiti[key] || {});
+  return h('section', {},
+    h('div', { class: 'row', style: 'margin-top:0' }, h('h2', { style: 'margin:0' }, 'Verifiche elettriche (IEC 60204-1, cap. 18)'), h('span', { class: 'spacer' }), valPill(V.riepilogo(lista))),
+    h('p', { class: 'note' }, `Criteri riassunti da ${V.FONTE_ELETTRICHE}: confrontali con la copia della norma in uso. Per più punti di misura (es. un circuito per riga) aggiungi una prova.`),
+    h('div', { class: 'grid', style: 'margin-top:10px' },
+      field('Equipaggiamento / quadro', () => el.quadro, x => el.quadro = x),
+      field('Tensione nominale di alimentazione', () => el.tensione, x => el.tensione = x, { placeholder: 'es. 400 V 50 Hz TN-S' }),
+      field('Strumento (modello, matricola)', () => el.strumento, x => el.strumento = x),
+      field('Scadenza taratura strumento', () => el.taratura, x => el.taratura = x, { type: 'date' }),
+      field('Eseguite da', () => el.esecutore, x => el.esecutore = x),
+      field('Data', () => el.data, x => el.data = x, { type: 'date' })),
+    h('div', { class: 'scroll', style: 'margin-top:10px' }, h('table', { class: 'val' },
+      h('thead', {}, h('tr', {}, h('th', {}, 'Rif.'), h('th', {}, 'Prova'), h('th', {}, 'Criterio'), h('th', {}, 'Misurato'), h('th', {}, 'Esito'), h('th', {}, 'Note'), h('th', {}))),
+      h('tbody', {}, lista.map(p => h('tr', {},
+        h('td', {}, p.clausola || ''),
+        h('td', {}, p.extra ? field(null, () => p.extra.testo, x => p.extra.testo = x) : p.testo),
+        h('td', {}, p.extra ? field(null, () => p.extra.criterio, x => p.extra.criterio = x) : p.criterio),
+        h('td', { style: 'white-space:nowrap' }, h('input', { value: p.misurato || '', style: 'width:90px', onchange: e => { esito(p.key).misurato = e.target.value; render(); } }), ' ',
+          p.extra ? h('input', { value: p.extra.unita || '', placeholder: 'unità', style: 'width:52px', onchange: e => { p.extra.unita = e.target.value; render(); } }) : p.unita),
+        h('td', {}, selEsito(() => p.esito, x => esito(p.key).esito = x)),
+        h('td', {}, field(null, () => p.note, x => esito(p.key).note = x)),
+        h('td', {}, p.extra ? h('button', { title: 'Elimina la prova', onclick: () => { el.extra = el.extra.filter(x => x !== p.extra); delete el.esiti[p.key]; render(); } }, '×') : null)))))),
+    h('div', { class: 'row' }, h('button', { onclick: () => { el.extra.push({ id: uid(), testo: '', criterio: '', unita: '' }); render(); } }, '+ prova')));
+}
+function elettricheReport() {
+  const el = S.elettriche || {};
+  const lista = V.proveElettriche(el);
+  const dato = (k, v) => [h('span', {}, k), h('span', {}, v || '—')];
+  return h('div', { class: 'doc-sez' },
+    h('h2', { class: 'doc-h' }, 'Verifiche dell\'equipaggiamento elettrico'),
+    h('p', {}, `${V.FONTE_ELETTRICHE}.`),
+    h('div', { class: 'kv doc-dati' },
+      dato('Equipaggiamento / quadro', el.quadro), dato('Tensione nominale', el.tensione),
+      dato('Strumento', el.strumento), dato('Scadenza taratura', el.taratura)),
+    h('table', { class: 'doc-tab val' },
+      h('thead', {}, h('tr', {}, h('th', {}, 'Rif.'), h('th', {}, 'Prova'), h('th', {}, 'Criterio'), h('th', {}, 'Misurato'), h('th', {}, 'Esito'), h('th', {}, 'Note'))),
+      h('tbody', {}, lista.map(p => h('tr', {}, h('td', {}, p.clausola || ''), h('td', {}, p.testo || '—'), h('td', {}, p.criterio || ''),
+        h('td', { style: 'white-space:nowrap' }, p.misurato ? `${p.misurato} ${p.unita || ''}` : ''),
+        h('td', { class: p.esito === 'ok' ? 'ok' : p.esito === 'ko' ? 'bad' : '' }, p.esito ? ESITO_TXT[p.esito] : ''), h('td', {}, p.note || ''))))),
+    h('p', { style: 'margin-top:10px' }, `Eseguite da: ${el.esecutore || '__________________'} · Data: ${el.data || '__________'} · Firma: ______________________`));
 }
 function valReport(f, n) {
   const v = f.validazione || {};
@@ -708,7 +754,7 @@ function step6() {
       h('button', { onclick: () => importFile(d => { if (!d.funzioni) throw new Error('manca "funzioni"'); const { articoli, ...v } = d; if (Array.isArray(articoli)) A = window.Archivio.unisci(A, articoli).articoli; S = Object.assign(defaultState(), v); }) }, 'Importa valutazione'),
       h('span', { class: 'spacer' }),
       h('button', { onclick: () => { if (confirm('Cancellare la valutazione corrente? L\'archivio articoli resta.')) { S = defaultState(); render(); } } }, 'Nuova valutazione')),
-    h('p', { class: 'note noprint', style: 'margin-top:0' }, 'Nella finestra di stampa scegli "Salva come PDF". Numero documento, revisione e firmatari si compilano nel passo 1; misure sistematiche e prove di validazione nel passo 6. Le prove non compilate restano vuote, da completare a mano sul foglio.'),
+    h('p', { class: 'note noprint', style: 'margin-top:0' }, 'Nella finestra di stampa scegli "Salva come PDF". Numero documento, revisione e firmatari si compilano nel passo 1; misure sistematiche, prove di validazione e verifiche elettriche nel passo 6. Le prove non compilate restano vuote, da completare a mano sul foglio.'),
     // piè di pagina del PDF: documento, revisione e numero di pagina
     h('style', {}, `@page { @bottom-left { content: ${JSON.stringify([p.documento, p.revisione ? 'Rev. ' + p.revisione : ''].filter(Boolean).join(' · ') || (p.nome || 'Safety evaluation'))}; font-size:8pt; color:#555; } }`),
     h('div', { class: 'doc' },
@@ -739,6 +785,7 @@ function step6() {
         h('div', { class: 'doc-verifica' }, verdict(f, r, true)),
         h('div', { class: 'doc-val' }, valReport(f, i + 1)))),
       sistematicheReport(),
+      elettricheReport(),
       h('div', { class: 'doc-sez' },
         h('h2', { class: 'doc-h' }, 'Componenti usati e fonti'), h('table', { class: 'doc-tab' },
           h('thead', {}, h('tr', {}, h('th', {}, 'Articolo'), h('th', {}, 'PFH'), h('th', {}, 'B10d'), h('th', {}, 'MTTFd'), h('th', {}, 'Fonte'), h('th', {}, 'Verificato'))),
